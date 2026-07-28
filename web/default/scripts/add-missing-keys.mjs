@@ -788,6 +788,69 @@ for (const [locale, translations] of Object.entries(
   Object.assign(newKeys[locale], translations)
 }
 
+const modelIconTranslations = {
+  en: {
+    'Application icons': 'Application icons',
+    'Choose a provider or model icon from the library.':
+      'Choose a provider or model icon from the library.',
+    'Custom icons': 'Custom icons',
+    'Model icons': 'Model icons',
+    'Provider icons': 'Provider icons',
+  },
+  zh: {
+    'Application icons': '应用图标',
+    'Choose a provider or model icon from the library.':
+      '从图标库中选择供应商或模型图标。',
+    'Custom icons': '自定义图标',
+    'Model icons': '模型图标',
+    'Provider icons': '供应商图标',
+  },
+  'zh-TW': {
+    'Application icons': '應用程式圖示',
+    'Choose a provider or model icon from the library.':
+      '從圖示庫中選擇供應商或模型圖示。',
+    'Custom icons': '自訂圖示',
+    'Model icons': '模型圖示',
+    'Provider icons': '供應商圖示',
+  },
+  fr: {
+    'Application icons': "Icônes d'applications",
+    'Choose a provider or model icon from the library.':
+      'Choisissez une icône de fournisseur ou de modèle dans la bibliothèque.',
+    'Custom icons': 'Icônes personnalisées',
+    'Model icons': 'Icônes de modèles',
+    'Provider icons': 'Icônes de fournisseurs',
+  },
+  ja: {
+    'Application icons': 'アプリケーションアイコン',
+    'Choose a provider or model icon from the library.':
+      'ライブラリからプロバイダーまたはモデルのアイコンを選択します。',
+    'Custom icons': 'カスタムアイコン',
+    'Model icons': 'モデルアイコン',
+    'Provider icons': 'プロバイダーアイコン',
+  },
+  ru: {
+    'Application icons': 'Значки приложений',
+    'Choose a provider or model icon from the library.':
+      'Выберите значок поставщика или модели из библиотеки.',
+    'Custom icons': 'Пользовательские значки',
+    'Model icons': 'Значки моделей',
+    'Provider icons': 'Значки поставщиков',
+  },
+  vi: {
+    'Application icons': 'Biểu tượng ứng dụng',
+    'Choose a provider or model icon from the library.':
+      'Chọn biểu tượng nhà cung cấp hoặc mô hình từ thư viện.',
+    'Custom icons': 'Biểu tượng tùy chỉnh',
+    'Model icons': 'Biểu tượng mô hình',
+    'Provider icons': 'Biểu tượng nhà cung cấp',
+  },
+}
+
+for (const [locale, translations] of Object.entries(modelIconTranslations)) {
+  Object.assign(newKeys[locale], translations)
+}
+
 async function main() {
   let totalApplied = 0
 

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { toc as lobeIconCatalog } from '@lobehub/icons'
 import { AlertTriangle, Save } from 'lucide-react'
 import {
   forwardRef,
@@ -59,6 +60,7 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -72,7 +74,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { getLobeIcon } from '@/lib/lobe-icon'
+import { getLobeColorIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
 import { SettingsControlGroup } from '../components/settings-form-layout'
@@ -97,6 +99,20 @@ import { formatPricingNumber } from './pricing-format'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
 export type { ModelRatioData } from './model-pricing-core'
+
+type ModelIconItem = {
+  value: string
+  label: string
+  group: 'none' | 'provider' | 'model' | 'application' | 'custom'
+}
+
+const BUILT_IN_MODEL_ICON_ITEMS: ModelIconItem[] = lobeIconCatalog.map(
+  (icon) => ({
+    value: icon.id,
+    label: icon.fullTitle,
+    group: icon.group,
+  })
+)
 
 type ModelPricingSheetProps = {
   open: boolean
@@ -173,17 +189,35 @@ export const ModelPricingEditorPanel = forwardRef<
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
   const iconItems = useMemo(() => {
-    const values = new Set(iconOptions ?? [])
-    if (editData?.icon) values.add(editData.icon)
+    const builtInValues = new Set(
+      BUILT_IN_MODEL_ICON_ITEMS.map((item) => item.value)
+    )
+    const customValues = new Set(iconOptions ?? [])
+    if (editData?.icon) customValues.add(editData.icon)
+
+    const customItems: ModelIconItem[] = [...customValues]
+      .filter((value) => value && !builtInValues.has(value))
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value, group: 'custom' }))
 
     return [
-      { value: '__none__', label: t('No icon') },
-      ...[...values]
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ value, label: value })),
+      {
+        value: '__none__',
+        label: t('No icon'),
+        group: 'none' as const,
+      },
+      ...BUILT_IN_MODEL_ICON_ITEMS,
+      ...customItems,
     ]
   }, [editData?.icon, iconOptions, t])
+  const providerIconItems = iconItems.filter(
+    (item) => item.group === 'provider'
+  )
+  const modelIconItems = iconItems.filter((item) => item.group === 'model')
+  const applicationIconItems = iconItems.filter(
+    (item) => item.group === 'application'
+  )
+  const customIconItems = iconItems.filter((item) => item.group === 'custom')
 
   const form = useForm<ModelPricingFormValues>({
     resolver: zodResolver(createModelPricingSchema(t)),
@@ -609,46 +643,118 @@ export const ModelPricingEditorPanel = forwardRef<
                   <FormField
                     control={form.control}
                     name='icon'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Model icon')}</FormLabel>
-                        <Select
-                          items={iconItems}
-                          value={field.value || '__none__'}
-                          onValueChange={(value) =>
-                            field.onChange(value === '__none__' ? '' : value)
-                          }
-                        >
-                          <FormControl>
-                            <SelectTrigger className='w-full'>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent alignItemWithTrigger={false}>
-                            <SelectGroup>
-                              {iconItems.map((item) => (
-                                <SelectItem key={item.value} value={item.value}>
-                                  {item.value === '__none__' ? (
-                                    <span className='bg-muted text-muted-foreground flex size-5 items-center justify-center rounded text-xs'>
-                                      -
-                                    </span>
+                    render={({ field }) => {
+                      const selectedIconItem = iconItems.find(
+                        (item) => item.value === (field.value || '__none__')
+                      )
+
+                      return (
+                        <FormItem>
+                          <FormLabel>{t('Model icon')}</FormLabel>
+                          <Select
+                            items={iconItems}
+                            value={field.value || '__none__'}
+                            onValueChange={(value) =>
+                              field.onChange(value === '__none__' ? '' : value)
+                            }
+                          >
+                            <FormControl>
+                              <SelectTrigger className='w-full'>
+                                <SelectValue>
+                                  {selectedIconItem?.value === '__none__' ? (
+                                    <>
+                                      <span className='bg-muted text-muted-foreground flex size-5 items-center justify-center rounded text-xs'>
+                                        -
+                                      </span>
+                                      <span>{t('No icon')}</span>
+                                    </>
                                   ) : (
-                                    getLobeIcon(item.value, 20)
+                                    <>
+                                      {getLobeColorIcon(
+                                        selectedIconItem?.value,
+                                        20
+                                      )}
+                                      <span>{selectedIconItem?.label}</span>
+                                    </>
                                   )}
-                                  <span>{item.label}</span>
+                                </SelectValue>
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent
+                              alignItemWithTrigger={false}
+                              className='max-h-[min(28rem,var(--available-height))]'
+                            >
+                              <SelectGroup>
+                                <SelectItem value='__none__'>
+                                  <span className='bg-muted text-muted-foreground flex size-5 items-center justify-center rounded text-xs'>
+                                    -
+                                  </span>
+                                  <span>{t('No icon')}</span>
                                 </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <FormDescription>
-                          {t(
-                            'Choose from icons already used by your model library.'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                              </SelectGroup>
+                              <SelectGroup>
+                                <SelectLabel>{t('Provider icons')}</SelectLabel>
+                                {providerIconItems.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {getLobeColorIcon(item.value, 20)}
+                                    <span>{item.label}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              <SelectGroup>
+                                <SelectLabel>{t('Model icons')}</SelectLabel>
+                                {modelIconItems.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {getLobeColorIcon(item.value, 20)}
+                                    <span>{item.label}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              <SelectGroup>
+                                <SelectLabel>
+                                  {t('Application icons')}
+                                </SelectLabel>
+                                {applicationIconItems.map((item) => (
+                                  <SelectItem
+                                    key={item.value}
+                                    value={item.value}
+                                  >
+                                    {getLobeColorIcon(item.value, 20)}
+                                    <span>{item.label}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectGroup>
+                              {customIconItems.length > 0 && (
+                                <SelectGroup>
+                                  <SelectLabel>{t('Custom icons')}</SelectLabel>
+                                  {customIconItems.map((item) => (
+                                    <SelectItem
+                                      key={item.value}
+                                      value={item.value}
+                                    >
+                                      {getLobeColorIcon(item.value, 20)}
+                                      <span>{item.label}</span>
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            {t(
+                              'Choose a provider or model icon from the library.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )
+                    }}
                   />
 
                   <FormField

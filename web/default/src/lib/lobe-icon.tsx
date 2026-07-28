@@ -162,3 +162,36 @@ export function getLobeIcon(
 
   return <IconComponent {...props} />
 }
+
+/** Render a brand's color logo without the Avatar background. */
+export function getLobeColorIcon(
+  iconName: string | undefined | null,
+  size: number = 20
+): React.ReactNode {
+  const baseIconName = iconName?.split('.')[0]
+  const BaseIcon = (LobeIcons as Record<string, unknown>)[
+    baseIconName || ''
+  ] as Record<string, unknown> | undefined
+  const ColorIcon = BaseIcon?.Color as
+    | React.ComponentType<Record<string, unknown>>
+    | undefined
+
+  if (
+    ColorIcon &&
+    (typeof ColorIcon === 'function' || typeof ColorIcon === 'object')
+  ) {
+    return (
+      <ColorIcon
+        size={size}
+        style={{
+          display: 'block',
+          flexShrink: 0,
+          height: size,
+          width: size,
+        }}
+      />
+    )
+  }
+
+  return getLobeIcon(iconName, size)
+}
