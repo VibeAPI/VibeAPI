@@ -85,12 +85,44 @@ export function CompactDateTimeRangePicker({
     setOpen(false)
   }
 
-  const applyPreset = (kind: 'today' | '7d' | 'week' | '30d' | 'month') => {
+  const applyPreset = (
+    kind:
+      | 'last1h'
+      | 'last12h'
+      | 'last24h'
+      | 'today'
+      | 'yesterday'
+      | 'dayBeforeYesterday'
+      | '7d'
+      | 'week'
+      | '30d'
+      | 'month'
+  ) => {
     const now = dayjs()
     const presets = {
+      last1h: {
+        start: now.subtract(1, 'hour').toDate(),
+        end: now.toDate(),
+      },
+      last12h: {
+        start: now.subtract(12, 'hour').toDate(),
+        end: now.toDate(),
+      },
+      last24h: {
+        start: now.subtract(24, 'hour').toDate(),
+        end: now.toDate(),
+      },
       today: {
         start: now.startOf('day').toDate(),
         end: now.endOf('day').toDate(),
+      },
+      yesterday: {
+        start: now.subtract(1, 'day').startOf('day').toDate(),
+        end: now.subtract(1, 'day').endOf('day').toDate(),
+      },
+      dayBeforeYesterday: {
+        start: now.subtract(2, 'day').startOf('day').toDate(),
+        end: now.subtract(2, 'day').endOf('day').toDate(),
       },
       '7d': {
         start: now.subtract(6, 'day').startOf('day').toDate(),
@@ -167,12 +199,39 @@ export function CompactDateTimeRangePicker({
             </div>
           </div>
 
-          <div className='flex flex-wrap gap-1.5'>
+          <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-5'>
             <Button
               type='button'
               variant='secondary'
               size='sm'
-              className='h-7 flex-1 px-2 text-xs'
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('last1h')}
+            >
+              {t('Last 1 hour')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('last12h')}
+            >
+              {t('Last 12 hours')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('last24h')}
+            >
+              {t('Last 24 hours')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='h-7 px-2 text-xs'
               onClick={() => applyPreset('today')}
             >
               {t('Today')}
@@ -181,16 +240,34 @@ export function CompactDateTimeRangePicker({
               type='button'
               variant='secondary'
               size='sm'
-              className='h-7 flex-1 px-2 text-xs'
-              onClick={() => applyPreset('7d')}
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('yesterday')}
             >
-              {t('7 Days')}
+              {t('Yesterday')}
             </Button>
             <Button
               type='button'
               variant='secondary'
               size='sm'
-              className='h-7 flex-1 px-2 text-xs'
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('dayBeforeYesterday')}
+            >
+              {t('Day before yesterday')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              onClick={() => applyPreset('7d')}
+            >
+              {t('Last 7 days')}
+            </Button>
+            <Button
+              type='button'
+              variant='secondary'
+              size='sm'
+              className='h-7 px-2 text-xs'
               onClick={() => applyPreset('week')}
             >
               {t('This week')}
@@ -199,16 +276,16 @@ export function CompactDateTimeRangePicker({
               type='button'
               variant='secondary'
               size='sm'
-              className='h-7 flex-1 px-2 text-xs'
+              className='h-7 px-2 text-xs'
               onClick={() => applyPreset('30d')}
             >
-              {t('30 Days')}
+              {t('Last 30 days')}
             </Button>
             <Button
               type='button'
               variant='secondary'
               size='sm'
-              className='h-7 flex-1 px-2 text-xs'
+              className='h-7 px-2 text-xs'
               onClick={() => applyPreset('month')}
             >
               {t('This month')}

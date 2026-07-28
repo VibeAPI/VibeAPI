@@ -375,8 +375,7 @@ const goPayTranslations = {
       'Scannez le QR code avec WeChat pour terminer le paiement.',
     'Use Alipay computer website payment.':
       'Utiliser le paiement Alipay pour site web sur ordinateur.',
-    'Use the Alipay sandbox gateway.':
-      'Utiliser la passerelle de test Alipay.',
+    'Use the Alipay sandbox gateway.': 'Utiliser la passerelle de test Alipay.',
     'Use WeChat Pay API v3 Native QR code payment.':
       'Utiliser le paiement QR Native de l’API v3 WeChat Pay.',
     'Used to verify Alipay asynchronous notifications.':
@@ -439,15 +438,13 @@ const goPayTranslations = {
     'Enable official Alipay': 'Включить официальный Alipay',
     'Enable official WeChat Pay': 'Включить официальный WeChat Pay',
     'Merchant API private key': 'Закрытый ключ API продавца',
-    'Merchant certificate serial number':
-      'Серийный номер сертификата продавца',
+    'Merchant certificate serial number': 'Серийный номер сертификата продавца',
     'Official Alipay and WeChat Pay': 'Официальные Alipay и WeChat Pay',
     'Scan the QR code with WeChat to complete payment.':
       'Отсканируйте QR-код в WeChat, чтобы завершить оплату.',
     'Use Alipay computer website payment.':
       'Использовать оплату Alipay для компьютерного сайта.',
-    'Use the Alipay sandbox gateway.':
-      'Использовать тестовый шлюз Alipay.',
+    'Use the Alipay sandbox gateway.': 'Использовать тестовый шлюз Alipay.',
     'Use WeChat Pay API v3 Native QR code payment.':
       'Использовать Native QR-оплату WeChat Pay API v3.',
     'Used to verify Alipay asynchronous notifications.':
@@ -529,8 +526,7 @@ const modelCatalogTranslations = {
     'Per Second': 'Per Second',
     'Per second': 'Per second',
     'Price per second': 'Price per second',
-    'Shown on the public model catalog.':
-      'Shown on the public model catalog.',
+    'Shown on the public model catalog.': 'Shown on the public model catalog.',
     Sources: 'Sources',
     'The fixed price is charged for each request.':
       'The fixed price is charged for each request.',
@@ -710,6 +706,85 @@ const modelCatalogTranslations = {
 }
 
 for (const [locale, translations] of Object.entries(modelCatalogTranslations)) {
+  Object.assign(newKeys[locale], translations)
+}
+
+const usageLogTimeRangeTranslations = {
+  en: {
+    'Day before yesterday': 'Day before yesterday',
+    'Last 1 hour': 'Last 1 hour',
+    'Last 7 days': 'Last 7 days',
+    'Last 12 hours': 'Last 12 hours',
+    'Last 24 hours': 'Last 24 hours',
+    'Last 30 days': 'Last 30 days',
+    'This month': 'This month',
+    Yesterday: 'Yesterday',
+  },
+  zh: {
+    'Day before yesterday': '前天',
+    'Last 1 hour': '近 1 小时',
+    'Last 7 days': '近 7 天',
+    'Last 12 hours': '近 12 小时',
+    'Last 24 hours': '近 24 小时',
+    'Last 30 days': '近 30 天',
+    'This month': '本月',
+    Yesterday: '昨天',
+  },
+  'zh-TW': {
+    'Day before yesterday': '前天',
+    'Last 1 hour': '近 1 小時',
+    'Last 7 days': '近 7 天',
+    'Last 12 hours': '近 12 小時',
+    'Last 24 hours': '近 24 小時',
+    'Last 30 days': '近 30 天',
+    'This month': '本月',
+    Yesterday: '昨天',
+  },
+  fr: {
+    'Day before yesterday': 'Avant-hier',
+    'Last 1 hour': 'Dernière heure',
+    'Last 7 days': '7 derniers jours',
+    'Last 12 hours': '12 dernières heures',
+    'Last 24 hours': '24 dernières heures',
+    'Last 30 days': '30 derniers jours',
+    'This month': 'Ce mois-ci',
+    Yesterday: 'Hier',
+  },
+  ja: {
+    'Day before yesterday': '一昨日',
+    'Last 1 hour': '直近1時間',
+    'Last 7 days': '直近7日間',
+    'Last 12 hours': '直近12時間',
+    'Last 24 hours': '直近24時間',
+    'Last 30 days': '直近30日間',
+    'This month': '今月',
+    Yesterday: '昨日',
+  },
+  ru: {
+    'Day before yesterday': 'Позавчера',
+    'Last 1 hour': 'Последний час',
+    'Last 7 days': 'Последние 7 дней',
+    'Last 12 hours': 'Последние 12 часов',
+    'Last 24 hours': 'Последние 24 часа',
+    'Last 30 days': 'Последние 30 дней',
+    'This month': 'В этом месяце',
+    Yesterday: 'Вчера',
+  },
+  vi: {
+    'Day before yesterday': 'Hôm kia',
+    'Last 1 hour': '1 giờ qua',
+    'Last 7 days': '7 ngày qua',
+    'Last 12 hours': '12 giờ qua',
+    'Last 24 hours': '24 giờ qua',
+    'Last 30 days': '30 ngày qua',
+    'This month': 'Tháng này',
+    Yesterday: 'Hôm qua',
+  },
+}
+
+for (const [locale, translations] of Object.entries(
+  usageLogTimeRangeTranslations
+)) {
   Object.assign(newKeys[locale], translations)
 }
 
