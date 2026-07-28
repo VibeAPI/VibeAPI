@@ -89,7 +89,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -140,12 +140,12 @@ export function UsersMutateDrawer({
         if (result.success && result.data) {
           form.reset(transformUserToFormDefaults(result.data))
         }
-      })
+      }).catch(() => toast.error(t(ERROR_MESSAGES.UNEXPECTED)))
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form])
+  }, [open, isUpdate, currentRow, form, t])
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -195,7 +195,7 @@ export function UsersMutateDrawer({
               : t(ERROR_MESSAGES.CREATE_FAILED))
         )
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -278,7 +278,8 @@ export function UsersMutateDrawer({
                             { value: '10', label: t('Admin') },
                           ]}
                           onValueChange={(value) =>
-                            value !== null && field.onChange(parseInt(value))
+                            value !== null &&
+                            field.onChange(Number.parseInt(value))
                           }
                           value={String(field.value)}
                         >
@@ -360,12 +361,10 @@ export function UsersMutateDrawer({
                       <FormItem>
                         <FormLabel>{t('Group')}</FormLabel>
                         <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            })),
-                          ]}
+                          items={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
                           onValueChange={field.onChange}
                           value={field.value}
                         >
@@ -447,6 +446,39 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+                  {!currentRow?.inviter_id && (
+                    <FormField
+                      control={form.control}
+                      name='inviter_id'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Inviter ID')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='number'
+                              min={1}
+                              value={field.value ?? ''}
+                              placeholder={t('Enter inviter user ID')}
+                              onChange={(event) =>
+                                field.onChange(
+                                  event.target.value
+                                    ? Number(event.target.value)
+                                    : undefined
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t(
+                              'Manual assignment is permanent and does not grant invitation rewards.'
+                            )}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                 </SideDrawerSection>
               )}
 

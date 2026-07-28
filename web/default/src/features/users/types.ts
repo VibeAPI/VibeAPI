@@ -99,6 +99,7 @@ export interface SearchUsersParams {
   group?: string
   role?: string
   status?: string
+  inviter_id?: string
   p?: number
   page_size?: number
 }
@@ -111,7 +112,13 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
+  inviter_id?: number // Only used when manually assigning an inviter
   admin_permissions?: AdminPermissionMatrix
+}
+
+export interface UpdateUsersRemarkPayload {
+  user_ids: number[]
+  remark: string
 }
 
 export type ManageUserAction =

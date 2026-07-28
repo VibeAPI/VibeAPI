@@ -16,6 +16,7 @@ func GetAllLogs(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	username := c.Query("username")
+	userRemark := c.Query("user_remark")
 	tokenName := c.Query("token_name")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
@@ -23,7 +24,7 @@ func GetAllLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, excludeAdmins)
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, userRemark, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, excludeAdmins)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -102,11 +103,12 @@ func GetLogsStat(c *gin.Context) {
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	tokenName := c.Query("token_name")
 	username := c.Query("username")
+	userRemark := c.Query("user_remark")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, excludeAdmins)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, userRemark, tokenName, channel, group, excludeAdmins)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -133,7 +135,7 @@ func GetLogsSelfStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, false)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, "", tokenName, channel, group, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return

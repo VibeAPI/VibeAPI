@@ -465,7 +465,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, excludeAdmins bool) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, userRemark string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, excludeAdmins bool) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -478,6 +478,16 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	}
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.username", username); err != nil {
 		return nil, 0, err
+	}
+	if userRemark != "" {
+		var userIds []int
+		if err := DB.Unscoped().Model(&User{}).Where("remark LIKE ?", "%"+userRemark+"%").Pluck("id", &userIds).Error; err != nil {
+			return nil, 0, err
+		}
+		if len(userIds) == 0 {
+			return []*Log{}, 0, nil
+		}
+		tx = tx.Where("logs.user_id IN ?", userIds)
 	}
 	if tokenName != "" {
 		tx = tx.Where("logs.token_name = ?", tokenName)
@@ -624,7 +634,7 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, excludeAdmins bool) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, userRemark string, tokenName string, channel int, group string, excludeAdmins bool) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -635,6 +645,17 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
 		return stat, err
+	}
+	if userRemark != "" {
+		var userIds []int
+		if err := DB.Unscoped().Model(&User{}).Where("remark LIKE ?", "%"+userRemark+"%").Pluck("id", &userIds).Error; err != nil {
+			return stat, err
+		}
+		if len(userIds) == 0 {
+			return stat, nil
+		}
+		tx = tx.Where("user_id IN ?", userIds)
+		rpmTpmQuery = rpmTpmQuery.Where("user_id IN ?", userIds)
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)

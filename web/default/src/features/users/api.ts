@@ -28,6 +28,7 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  UpdateUsersRemarkPayload,
 } from './types'
 
 // ============================================================================
@@ -56,6 +57,7 @@ export async function searchUsers(
     group = '',
     role = '',
     status = '',
+    inviter_id = '',
     p = 1,
     page_size = 10,
   } = params
@@ -64,9 +66,17 @@ export async function searchUsers(
   queryParams.set('group', group)
   if (role) queryParams.set('role', role)
   if (status) queryParams.set('status', status)
+  if (inviter_id) queryParams.set('inviter_id', inviter_id)
   queryParams.set('p', String(p))
   queryParams.set('page_size', String(page_size))
   const res = await api.get(`/api/user/search?${queryParams.toString()}`)
+  return res.data
+}
+
+export async function updateUsersRemark(
+  data: UpdateUsersRemarkPayload
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/batch/remark', data)
   return res.data
 }
 

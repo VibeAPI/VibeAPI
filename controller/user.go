@@ -336,8 +336,17 @@ func SearchUsers(c *gin.Context) {
 			status = &parsed
 		}
 	}
+	var inviterId *int
+	if inviterIdStr := c.Query("inviter_id"); inviterIdStr != "" {
+		parsed, err := strconv.Atoi(inviterIdStr)
+		if err != nil || parsed <= 0 {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		inviterId = &parsed
+	}
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	users, total, err := model.SearchUsers(keyword, group, role, status, inviterId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -676,9 +685,14 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	requestedInviterId := updatedUser.InviterId
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if requestedInviterId > 0 && originUser.InviterId > 0 && requestedInviterId != originUser.InviterId {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
 	if updatedUser.Role != common.RoleGuestUser && updatedUser.Role != originUser.Role {
@@ -699,6 +713,11 @@ func UpdateUser(c *gin.Context) {
 	if err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := updatedUser.EditWithTx(tx, updatePassword); err != nil {
 			return err
+		}
+		if requestedInviterId > 0 && originUser.InviterId == 0 {
+			if err := model.SetManualInviter(tx, updatedUser.Id, requestedInviterId); err != nil {
+				return err
+			}
 		}
 		touched, err := updateAdminPermissionsForUserInTx(c, tx, updatedUser.Id, originUser.Role, updatedUser.AdminPermissions)
 		authzTouched = touched
@@ -725,6 +744,46 @@ func UpdateUser(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+type UpdateUsersRemarkRequest struct {
+	UserIds []int  `json:"user_ids" binding:"required,min=1,max=1000"`
+	Remark  string `json:"remark" binding:"max=255"`
+}
+
+func UpdateUsersRemark(c *gin.Context) {
+	var request UpdateUsersRemarkRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	request.Remark = strings.TrimSpace(request.Remark)
+
+	var users []model.User
+	if err := model.DB.Unscoped().Select("id", "role").Where("id IN ?", request.UserIds).Find(&users).Error; err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if len(users) != len(request.UserIds) {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	myRole := c.GetInt("role")
+	for _, user := range users {
+		if !canManageTargetRole(myRole, user.Role) {
+			common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+			return
+		}
+	}
+	if err := model.UpdateUsersRemark(request.UserIds, request.Remark); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, 0, "user.bulk_remark", map[string]interface{}{
+		"user_ids": request.UserIds,
+		"count":    len(request.UserIds),
+	})
+	common.ApiSuccess(c, nil)
 }
 
 func AdminClearUserBinding(c *gin.Context) {

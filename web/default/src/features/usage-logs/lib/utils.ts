@@ -191,6 +191,9 @@ export function buildApiParams(config: {
     ...(isAdmin && searchParams.username
       ? { username: String(searchParams.username) }
       : {}),
+    ...(isAdmin && searchParams.userRemark
+      ? { user_remark: String(searchParams.userRemark) }
+      : {}),
     ...(isAdmin && searchParams.excludeAdmins
       ? { exclude_admins: true }
       : {}),

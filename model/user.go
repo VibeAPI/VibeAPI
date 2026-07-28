@@ -320,7 +320,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, inviterId *int, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -365,6 +365,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
 	}
+	if inviterId != nil {
+		query = query.Where("id = ? OR inviter_id = ?", *inviterId, *inviterId)
+	}
 
 	// 获取总数
 	err = query.Count(&total).Error
@@ -386,6 +389,46 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	}
 
 	return users, total, nil
+}
+
+func SetManualInviter(tx *gorm.DB, userId int, inviterId int) error {
+	if userId == inviterId {
+		return errors.New("user cannot invite themselves")
+	}
+
+	var user User
+	if err := lockForUpdate(tx).Select("id", "inviter_id").First(&user, userId).Error; err != nil {
+		return err
+	}
+	if user.InviterId != 0 {
+		return errors.New("user already has an inviter")
+	}
+
+	var inviter User
+	if err := lockForUpdate(tx).Select("id", "inviter_id").First(&inviter, inviterId).Error; err != nil {
+		return errors.New("inviter does not exist")
+	}
+
+	ancestor := inviter
+	visited := map[int]struct{}{inviter.Id: {}}
+	for ancestor.InviterId != 0 {
+		if ancestor.InviterId == userId {
+			return errors.New("inviter relationship would create a cycle")
+		}
+		if _, exists := visited[ancestor.InviterId]; exists {
+			return errors.New("existing inviter relationship contains a cycle")
+		}
+		visited[ancestor.InviterId] = struct{}{}
+		if err := tx.Select("id", "inviter_id").First(&ancestor, ancestor.InviterId).Error; err != nil {
+			return err
+		}
+	}
+
+	return tx.Model(&user).Update("inviter_id", inviterId).Error
+}
+
+func UpdateUsersRemark(userIds []int, remark string) error {
+	return DB.Unscoped().Model(&User{}).Where("id IN ?", userIds).Update("remark", remark).Error
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {

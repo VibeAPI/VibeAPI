@@ -28,6 +28,7 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
+import { Input } from '@/components/ui/input'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { getUsers, searchUsers } from '../api'
@@ -46,6 +47,11 @@ const route = getRouteApi('/_authenticated/users/')
 
 function isDisabledUserRow(user: User) {
   return isUserDeleted(user) || user.status === USER_STATUS.DISABLED
+}
+
+function getDisabledUserRowClass(user: User, isMobile: boolean) {
+  if (!isDisabledUserRow(user)) return undefined
+  return isMobile ? DISABLED_ROW_MOBILE : DISABLED_ROW_DESKTOP
 }
 
 export function UsersTable() {
@@ -71,6 +77,7 @@ export function UsersTable() {
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: 'role', searchKey: 'role', type: 'array' },
       { columnId: 'group', searchKey: 'group', type: 'string' },
+      { columnId: 'invite_info', searchKey: 'inviterId', type: 'string' },
     ],
   })
   const statusFilter =
@@ -84,6 +91,10 @@ export function UsersTable() {
   const groupFilter =
     (columnFilters.find((filter) => filter.id === 'group')?.value as string) ??
     ''
+  const inviterIdFilter =
+    (columnFilters.find((filter) => filter.id === 'invite_info')?.value as
+      | string
+      | undefined) ?? ''
 
   // Fetch data with React Query
   const { data, isLoading, isFetching } = useQuery({
@@ -95,12 +106,16 @@ export function UsersTable() {
       statusFilter,
       roleFilter,
       groupFilter,
+      inviterIdFilter,
       refreshTrigger,
     ],
     queryFn: async () => {
       const hasFilter = globalFilter?.trim()
       const hasColumnFilter =
-        statusFilter.length > 0 || roleFilter.length > 0 || Boolean(groupFilter)
+        statusFilter.length > 0 ||
+        roleFilter.length > 0 ||
+        Boolean(groupFilter) ||
+        Boolean(inviterIdFilter)
       const params = {
         p: pagination.pageIndex + 1,
         page_size: pagination.pageSize,
@@ -114,6 +129,7 @@ export function UsersTable() {
               status: statusFilter[0] ?? '',
               role: roleFilter[0] ?? '',
               group: groupFilter,
+              inviter_id: inviterIdFilter,
             })
           : await getUsers(params)
 
@@ -191,13 +207,22 @@ export function UsersTable() {
             singleSelect: true,
           },
         ],
+        additionalSearch: (
+          <Input
+            type='number'
+            min={1}
+            aria-label={t('Inviter ID')}
+            placeholder={t('Filter by inviter ID')}
+            value={inviterIdFilter}
+            onChange={(event) =>
+              table.getColumn('invite_info')?.setFilterValue(event.target.value)
+            }
+            className='w-full sm:w-[180px]'
+          />
+        ),
       }}
       getRowClassName={(row, { isMobile }) =>
-        isDisabledUserRow(row.original)
-          ? isMobile
-            ? DISABLED_ROW_MOBILE
-            : DISABLED_ROW_DESKTOP
-          : undefined
+        getDisabledUserRowClass(row.original, isMobile)
       }
       bulkActions={<DataTableBulkActions table={table} />}
     />

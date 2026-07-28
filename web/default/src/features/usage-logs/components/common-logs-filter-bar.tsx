@@ -86,6 +86,7 @@ function buildSearchSourceKey(values: {
   token?: unknown
   group?: unknown
   username?: unknown
+  userRemark?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
   type?: unknown
@@ -98,6 +99,7 @@ function buildSearchSourceKey(values: {
     values.token,
     values.group,
     values.username,
+    values.userRemark,
     values.requestId,
     values.upstreamRequestId,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
@@ -131,6 +133,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token,
       group: searchParams.group,
       username: searchParams.username,
+      userRemark: searchParams.userRemark,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
       type: searchParams.type,
@@ -145,6 +148,7 @@ export function CommonLogsFilterBar<TData>(
       token: searchParams.token || undefined,
       group: searchParams.group || undefined,
       username: searchParams.username || undefined,
+      userRemark: searchParams.userRemark || undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
     }
@@ -161,6 +165,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.token,
     searchParams.group,
     searchParams.username,
+    searchParams.userRemark,
     searchParams.requestId,
     searchParams.upstreamRequestId,
     searchParams.type,
@@ -253,6 +258,7 @@ export function CommonLogsFilterBar<TData>(
   const hasExpandedFilters =
     !!filters.token ||
     !!filters.username ||
+    !!filters.userRemark ||
     !!filters.channel ||
     !!filters.requestId ||
     !!filters.upstreamRequestId
@@ -264,6 +270,7 @@ export function CommonLogsFilterBar<TData>(
   const expandedFilterCount = [
     filters.token,
     isAdmin ? filters.username : undefined,
+    isAdmin ? filters.userRemark : undefined,
     isAdmin ? filters.channel : undefined,
     filters.requestId,
     filters.upstreamRequestId,
@@ -409,6 +416,17 @@ export function CommonLogsFilterBar<TData>(
             type={sensitiveType}
             value={filters.username || ''}
             onChange={(e) => handleChange('username', e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        </LogsFilterField>
+      )}
+      {isAdmin && (
+        <LogsFilterField>
+          <LogsFilterInput
+            placeholder={t('User Remark')}
+            type={sensitiveType}
+            value={filters.userRemark || ''}
+            onChange={(e) => handleChange('userRemark', e.target.value)}
             onKeyDown={handleKeyDown}
           />
         </LogsFilterField>
