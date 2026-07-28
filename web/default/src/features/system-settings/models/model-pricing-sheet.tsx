@@ -69,12 +69,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
+import { SettingsControlGroup } from '../components/settings-form-layout'
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
@@ -739,84 +740,69 @@ export const ModelPricingEditorPanel = forwardRef<
                         control={form.control}
                         name='priceUnit'
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>{t('Billing unit')}</FormLabel>
-                            <ToggleGroup
-                              value={[field.value]}
-                              onValueChange={(values) => {
-                                const value = values[0]
-                                if (value === 'request' || value === 'second') {
-                                  field.onChange(value)
+                          <SettingsControlGroup className='space-y-3'>
+                            <div className='flex items-center justify-between gap-4 py-2.5'>
+                              <div className='min-w-0 space-y-0.5'>
+                                <FormLabel>{t('Per second')}</FormLabel>
+                                <FormDescription>
+                                  {field.value === 'second'
+                                    ? t(
+                                        'The fixed price is charged for each second.'
+                                      )
+                                    : t(
+                                        'The fixed price is charged for each request.'
+                                      )}
+                                </FormDescription>
+                              </div>
+                              <Switch
+                                checked={field.value === 'second'}
+                                onCheckedChange={(checked) =>
+                                  field.onChange(checked ? 'second' : 'request')
                                 }
-                              }}
-                              variant='outline'
-                              className='w-full'
-                            >
-                              <ToggleGroupItem
-                                value='request'
-                                className='flex-1'
-                              >
-                                {t('Per request')}
-                              </ToggleGroupItem>
-                              <ToggleGroupItem
-                                value='second'
-                                className='flex-1'
-                              >
-                                {t('Per second')}
-                              </ToggleGroupItem>
-                            </ToggleGroup>
-                            <FormDescription>
-                              {field.value === 'second'
-                                ? t(
-                                    'The fixed price is charged for each second.'
-                                  )
-                                : t(
-                                    'The fixed price is charged for each request.'
-                                  )}
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name='price'
-                        render={({ field }) => (
-                          <FormItem className='contents'>
-                            <Field>
-                              <FieldLabel>{t('Fixed price')}</FieldLabel>
-                              <FormControl>
-                                <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
-                                  <InputGroupInput
-                                    inputMode='decimal'
-                                    placeholder='0.01'
-                                    {...field}
-                                    onChange={(event) => {
-                                      const value = event.target.value
-                                      if (numericDraftRegex.test(value)) {
-                                        field.onChange(value)
-                                      }
-                                    }}
-                                  />
-                                  <InputGroupAddon align='inline-end'>
-                                    {watchedValues.priceUnit === 'second'
-                                      ? t('per second')
-                                      : t('per request')}
-                                  </InputGroupAddon>
-                                </InputGroup>
-                              </FormControl>
-                              <FieldDescription>
-                                {watchedValues.priceUnit === 'second'
-                                  ? t('Cost in USD for each second of usage.')
-                                  : t(
-                                      'Cost in USD per request, regardless of tokens used.'
-                                    )}
-                              </FieldDescription>
-                              <FormMessage />
-                            </Field>
-                          </FormItem>
+                                aria-label={t('Billing unit')}
+                              />
+                            </div>
+                            <FormField
+                              control={form.control}
+                              name='price'
+                              render={({ field: priceField }) => (
+                                <FormItem className='space-y-2'>
+                                  <FormLabel>{t('Fixed price')}</FormLabel>
+                                  <FormControl>
+                                    <InputGroup>
+                                      <InputGroupAddon>$</InputGroupAddon>
+                                      <InputGroupInput
+                                        inputMode='decimal'
+                                        placeholder='0.01'
+                                        {...priceField}
+                                        onChange={(event) => {
+                                          const value = event.target.value
+                                          if (numericDraftRegex.test(value)) {
+                                            priceField.onChange(value)
+                                          }
+                                        }}
+                                      />
+                                      <InputGroupAddon align='inline-end'>
+                                        {field.value === 'second'
+                                          ? t('per second')
+                                          : t('per request')}
+                                      </InputGroupAddon>
+                                    </InputGroup>
+                                  </FormControl>
+                                  <FormDescription>
+                                    {field.value === 'second'
+                                      ? t(
+                                          'Cost in USD for each second of usage.'
+                                        )
+                                      : t(
+                                          'Cost in USD per request, regardless of tokens used.'
+                                        )}
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </SettingsControlGroup>
                         )}
                       />
                     </FieldGroup>

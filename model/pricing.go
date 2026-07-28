@@ -56,6 +56,7 @@ var (
 	// 缓存映射：模型名 -> 启用分组 / 计费类型
 	modelEnableGroups     = make(map[string][]string)
 	modelQuotaTypeMap     = make(map[string]int)
+	modelPriceUnitMap     = make(map[string]string)
 	modelEnableGroupsLock = sync.RWMutex{}
 )
 
@@ -423,13 +424,22 @@ func updatePricing() {
 	modelEnableGroupsLock.Lock()
 	modelEnableGroups = make(map[string][]string)
 	modelQuotaTypeMap = make(map[string]int)
+	modelPriceUnitMap = make(map[string]string)
 	for _, p := range pricingMap {
 		modelEnableGroups[p.ModelName] = p.EnableGroup
 		modelQuotaTypeMap[p.ModelName] = p.QuotaType
+		modelPriceUnitMap[p.ModelName] = p.PriceUnit
 	}
 	modelEnableGroupsLock.Unlock()
 
 	lastGetPricingTime = time.Now()
+}
+
+func GetModelPriceUnit(modelName string) string {
+	GetPricing()
+	modelEnableGroupsLock.RLock()
+	defer modelEnableGroupsLock.RUnlock()
+	return normalizePriceUnit(modelPriceUnitMap[modelName])
 }
 
 // GetSupportedEndpointMap 返回全局端点到路径的映射

@@ -106,6 +106,22 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 
+	size := req.Size
+	if size == "" {
+		size = "720x1280"
+	}
+
+	ratios := map[string]float64{"size": 1}
+	if size == "1792x1024" || size == "1024x1792" {
+		ratios["size"] = 1.666667
+	}
+
+	// A fixed per-request price is already the full task price. Duration only
+	// multiplies per-second fixed prices and legacy ratio-based task pricing.
+	if info.PriceData.UsePrice && info.PriceData.PriceUnit != model.PriceUnitSecond {
+		return ratios
+	}
+
 	seconds, _ := strconv.Atoi(req.Seconds)
 	if seconds == 0 {
 		seconds = req.Duration
@@ -113,19 +129,7 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if seconds <= 0 {
 		seconds = 4
 	}
-
-	size := req.Size
-	if size == "" {
-		size = "720x1280"
-	}
-
-	ratios := map[string]float64{
-		"seconds": float64(seconds),
-		"size":    1,
-	}
-	if size == "1792x1024" || size == "1024x1792" {
-		ratios["size"] = 1.666667
-	}
+	ratios["seconds"] = float64(seconds)
 	return ratios
 }
 

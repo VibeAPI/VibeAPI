@@ -243,6 +243,7 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	priceData := types.PriceData{
 		FreeModel:      freeModel,
 		ModelPrice:     modelPrice,
+		PriceUnit:      model.GetModelPriceUnit(info.OriginModelName),
 		ModelRatio:     modelRatio,
 		UsePrice:       usePrice,
 		Quota:          quota,

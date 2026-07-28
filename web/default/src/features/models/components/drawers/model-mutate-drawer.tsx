@@ -288,7 +288,7 @@ export function ModelMutateDrawer({
       setOldModelName(model.model_name)
 
       // Base model data reset
-      const baseModelData = {
+      const baseModelData: ExtendedModelFormValues = {
         id: model.id,
         model_name: model.model_name,
         description: model.description || '',
@@ -795,44 +795,6 @@ export function ModelMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='price_unit'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Billing unit')}</FormLabel>
-                    <Select
-                      items={[
-                        { value: 'request', label: t('Per request') },
-                        { value: 'second', label: t('Per second') },
-                      ]}
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
-                      <FormControl>
-                        <SelectTrigger className='w-full'>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          <SelectItem value='request'>
-                            {t('Per request')}
-                          </SelectItem>
-                          <SelectItem value='second'>
-                            {t('Per second')}
-                          </SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      {t('Only applies to fixed-price models.')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name='tags'
                 render={({ field }) => (
                   <FormItem>
@@ -988,28 +950,60 @@ export function ModelMutateDrawer({
               {pricingMode === 'per-request' ? (
                 <FormField
                   control={form.control}
-                  name='price'
+                  name='price_unit'
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Fixed price (USD)')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          type='text'
-                          placeholder='0.01'
-                          {...field}
-                          onChange={(e) => {
-                            const value = e.target.value
-                            if (validateNumber(value)) {
-                              field.onChange(value)
+                    <FormItem className='bg-muted/20 space-y-3 rounded-xl border px-3 py-2.5'>
+                      <div className='flex items-center justify-between gap-4 py-2.5'>
+                        <div className='min-w-0 space-y-0.5'>
+                          <FormLabel>{t('Per second')}</FormLabel>
+                          <FormDescription>
+                            {field.value === 'second'
+                              ? t('The fixed price is charged for each second.')
+                              : t(
+                                  'The fixed price is charged for each request.'
+                                )}
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value === 'second'}
+                            onCheckedChange={(checked) =>
+                              field.onChange(checked ? 'second' : 'request')
                             }
-                          }}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Cost in USD per request, regardless of tokens used.'
+                            aria-label={t('Billing unit')}
+                          />
+                        </FormControl>
+                      </div>
+                      <FormField
+                        control={form.control}
+                        name='price'
+                        render={({ field: priceField }) => (
+                          <FormItem className='space-y-2'>
+                            <FormLabel>{t('Fixed price (USD)')}</FormLabel>
+                            <FormControl>
+                              <Input
+                                type='text'
+                                placeholder='0.01'
+                                {...priceField}
+                                onChange={(event) => {
+                                  const value = event.target.value
+                                  if (validateNumber(value)) {
+                                    priceField.onChange(value)
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {field.value === 'second'
+                                ? t('Cost in USD for each second of usage.')
+                                : t(
+                                    'Cost in USD per request, regardless of tokens used.'
+                                  )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
                         )}
-                      </FormDescription>
+                      />
                       <FormMessage />
                     </FormItem>
                   )}
