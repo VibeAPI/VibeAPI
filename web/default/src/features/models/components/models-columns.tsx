@@ -47,7 +47,10 @@ import { DescriptionCell } from './description-cell'
 /**
  * Generate models columns configuration
  */
-export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
+export function useModelsColumns(
+  vendors: Vendor[] = [],
+  showChannelInfo = true
+): ColumnDef<Model>[] {
   const { t } = useTranslation()
 
   // Get translated configs
@@ -60,7 +63,7 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
     vendorMap[v.id] = v
   })
 
-  return [
+  const columns: ColumnDef<Model>[] = [
     // Checkbox column
     {
       id: 'select',
@@ -469,4 +472,10 @@ export function useModelsColumns(vendors: Vendor[] = []): ColumnDef<Model>[] {
       meta: { pinned: 'right' as const },
     },
   ]
+
+  if (showChannelInfo) return columns
+  return columns.filter(
+    (column) =>
+      !('accessorKey' in column) || column.accessorKey !== 'bound_channels'
+  )
 }

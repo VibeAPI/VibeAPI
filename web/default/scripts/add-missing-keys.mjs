@@ -48,6 +48,11 @@ const commonTranslations = {
     'Confirm withdrawal': 'Confirm withdrawal',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.',
+    'Root administrators only': 'Root administrators only',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.',
+    'Only root administrators can see and access system settings.':
+      'Only root administrators can see and access system settings.',
   },
   zh: {
     Rejected: '已拒绝',
@@ -76,6 +81,11 @@ const commonTranslations = {
     'Confirm withdrawal': '确认撤回',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       '确定撤回这个待确认的对公支付订单吗？已上传的凭证仍会保留在订单记录中。',
+    'Root administrators only': '仅根管理员可见',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      '只有根管理员可以访问渠道；使用日志和流量分流中的渠道信息也会被隐藏。',
+    'Only root administrators can see and access system settings.':
+      '只有根管理员可以查看和访问系统设置。',
   },
   'zh-TW': {
     Rejected: '已拒絕',
@@ -104,6 +114,11 @@ const commonTranslations = {
     'Confirm withdrawal': '確認撤回',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       '確定撤回這個待確認的對公支付訂單嗎？已上傳的憑證仍會保留在訂單記錄中。',
+    'Root administrators only': '僅根管理員可見',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      '只有根管理員可以存取渠道；使用記錄和流量分流中的渠道資訊也會被隱藏。',
+    'Only root administrators can see and access system settings.':
+      '只有根管理員可以查看和存取系統設定。',
   },
   fr: {
     Rejected: 'Refusé',
@@ -132,6 +147,11 @@ const commonTranslations = {
     'Confirm withdrawal': 'Confirmer le retrait',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       'Retirer cette commande de paiement entreprise en attente ? Le justificatif restera disponible dans l’historique.',
+    'Root administrators only': 'Administrateurs racine uniquement',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      'Seuls les administrateurs racine peuvent accéder aux canaux ; leurs informations sont également masquées dans les journaux et la répartition du trafic.',
+    'Only root administrators can see and access system settings.':
+      'Seuls les administrateurs racine peuvent voir et accéder aux paramètres système.',
   },
   ja: {
     Rejected: '却下済み',
@@ -160,6 +180,11 @@ const commonTranslations = {
     'Confirm withdrawal': '撤回を確定',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       'この確認待ちの法人支払い注文を撤回しますか？アップロード済みの証憑は注文履歴に残ります。',
+    'Root administrators only': 'ルート管理者のみ表示',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      'チャネルにアクセスできるのはルート管理者のみです。ログとトラフィック分流でもチャネル情報は非表示になります。',
+    'Only root administrators can see and access system settings.':
+      'システム設定を表示してアクセスできるのはルート管理者のみです。',
   },
   ru: {
     Rejected: 'Отклонено',
@@ -188,6 +213,11 @@ const commonTranslations = {
     'Confirm withdrawal': 'Подтвердить отзыв',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       'Отозвать этот ожидающий корпоративный платёж? Загруженный документ останется в истории заказов.',
+    'Root administrators only': 'Только для корневых администраторов',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      'Только корневые администраторы могут управлять каналами; сведения о каналах также скрываются в журналах и распределении трафика.',
+    'Only root administrators can see and access system settings.':
+      'Только корневые администраторы могут видеть и открывать системные настройки.',
   },
   vi: {
     Rejected: 'Đã từ chối',
@@ -216,6 +246,11 @@ const commonTranslations = {
     'Confirm withdrawal': 'Xác nhận rút lại',
     'Withdraw this pending corporate payment order? The uploaded proof will remain available in the order history.':
       'Rút lại đơn thanh toán doanh nghiệp đang chờ này? Chứng từ đã tải lên vẫn được lưu trong lịch sử đơn hàng.',
+    'Root administrators only': 'Chỉ quản trị viên gốc',
+    'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.':
+      'Chỉ quản trị viên gốc mới có thể truy cập kênh; thông tin kênh cũng bị ẩn trong nhật ký và luồng lưu lượng.',
+    'Only root administrators can see and access system settings.':
+      'Chỉ quản trị viên gốc mới có thể xem và truy cập cài đặt hệ thống.',
   },
 }
 

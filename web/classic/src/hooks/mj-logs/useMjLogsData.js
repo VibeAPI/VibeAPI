@@ -30,6 +30,7 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useSidebar } from '../common/useSidebar';
 
 export const useMjLogsData = () => {
   const { t } = useTranslation();
@@ -60,6 +61,9 @@ export const useMjLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const { canViewRootOnlyModule } = useSidebar();
+  const showChannelInfo =
+    isAdminUser && canViewRootOnlyModule('admin', 'channel');
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'mj-logs-table-columns-admin'
@@ -100,8 +104,10 @@ export const useMjLogsData = () => {
         const merged = { ...defaults, ...parsed };
 
         // For non-admin users, force-hide admin-only columns (does not touch admin settings)
-        if (!isAdminUser) {
+        if (!showChannelInfo) {
           merged[COLUMN_KEYS.CHANNEL] = false;
+        }
+        if (!isAdminUser) {
           merged[COLUMN_KEYS.SUBMIT_RESULT] = false;
         }
         setVisibleColumns(merged);
@@ -127,7 +133,7 @@ export const useMjLogsData = () => {
     return {
       [COLUMN_KEYS.SUBMIT_TIME]: true,
       [COLUMN_KEYS.DURATION]: true,
-      [COLUMN_KEYS.CHANNEL]: isAdminUser,
+      [COLUMN_KEYS.CHANNEL]: showChannelInfo,
       [COLUMN_KEYS.TYPE]: true,
       [COLUMN_KEYS.TASK_ID]: true,
       [COLUMN_KEYS.SUBMIT_RESULT]: isAdminUser,
@@ -159,6 +165,10 @@ export const useMjLogsData = () => {
     const updatedColumns = {};
 
     allKeys.forEach((key) => {
+      if (!showChannelInfo && key === COLUMN_KEYS.CHANNEL) {
+        updatedColumns[key] = false;
+        return;
+      }
       if (
         (key === COLUMN_KEYS.CHANNEL || key === COLUMN_KEYS.SUBMIT_RESULT) &&
         !isAdminUser
@@ -293,6 +303,7 @@ export const useMjLogsData = () => {
     pageSize,
     showBanner,
     isAdminUser,
+    showChannelInfo,
 
     // Modal state
     isModalOpen,

@@ -32,6 +32,7 @@ const LogsFilters = ({
   setLogType,
   loading,
   isAdminUser,
+  showChannelInfo,
   t,
 }) => {
   return (
@@ -102,25 +103,26 @@ const LogsFilters = ({
             size='small'
           />
 
+          {showChannelInfo && (
+            <Form.Input
+              field='channel'
+              prefix={<IconSearch />}
+              placeholder={t('渠道 ID')}
+              showClear
+              pure
+              size='small'
+            />
+          )}
+
           {isAdminUser && (
-            <>
-              <Form.Input
-                field='channel'
-                prefix={<IconSearch />}
-                placeholder={t('渠道 ID')}
-                showClear
-                pure
-                size='small'
-              />
-              <Form.Input
-                field='username'
-                prefix={<IconSearch />}
-                placeholder={t('用户名称')}
-                showClear
-                pure
-                size='small'
-              />
-            </>
+            <Form.Input
+              field='username'
+              prefix={<IconSearch />}
+              placeholder={t('用户名称')}
+              showClear
+              pure
+              size='small'
+            />
           )}
         </div>
 

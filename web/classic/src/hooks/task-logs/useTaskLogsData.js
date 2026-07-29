@@ -30,6 +30,7 @@ import {
 } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useSidebar } from '../common/useSidebar';
 
 export const useTaskLogsData = () => {
   const { t } = useTranslation();
@@ -59,6 +60,9 @@ export const useTaskLogsData = () => {
 
   // User and admin
   const isAdminUser = isAdmin();
+  const { canViewRootOnlyModule } = useSidebar();
+  const showChannelInfo =
+    isAdminUser && canViewRootOnlyModule('admin', 'channel');
   // Role-specific storage key to prevent different roles from overwriting each other
   const STORAGE_KEY = isAdminUser
     ? 'task-logs-table-columns-admin'
@@ -111,8 +115,10 @@ export const useTaskLogsData = () => {
         const merged = { ...defaults, ...parsed };
 
         // For non-admin users, force-hide admin-only columns (does not touch admin settings)
-        if (!isAdminUser) {
+        if (!showChannelInfo) {
           merged[COLUMN_KEYS.CHANNEL] = false;
+        }
+        if (!isAdminUser) {
           merged[COLUMN_KEYS.USERNAME] = false;
         }
         setVisibleColumns(merged);
@@ -131,7 +137,7 @@ export const useTaskLogsData = () => {
       [COLUMN_KEYS.SUBMIT_TIME]: true,
       [COLUMN_KEYS.FINISH_TIME]: true,
       [COLUMN_KEYS.DURATION]: true,
-      [COLUMN_KEYS.CHANNEL]: isAdminUser,
+      [COLUMN_KEYS.CHANNEL]: showChannelInfo,
       [COLUMN_KEYS.USERNAME]: isAdminUser,
       [COLUMN_KEYS.PLATFORM]: true,
       [COLUMN_KEYS.TYPE]: true,
@@ -162,6 +168,10 @@ export const useTaskLogsData = () => {
     const updatedColumns = {};
 
     allKeys.forEach((key) => {
+      if (!showChannelInfo && key === COLUMN_KEYS.CHANNEL) {
+        updatedColumns[key] = false;
+        return;
+      }
       if (
         (key === COLUMN_KEYS.CHANNEL || key === COLUMN_KEYS.USERNAME) &&
         !isAdminUser
@@ -317,6 +327,7 @@ export const useTaskLogsData = () => {
     logCount,
     pageSize,
     isAdminUser,
+    showChannelInfo,
 
     // Modal state
     isModalOpen,

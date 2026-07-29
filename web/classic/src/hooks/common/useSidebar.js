@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
-import { API } from '../../helpers';
+import { API, isRoot } from '../../helpers';
 
 // 创建一个全局事件系统来同步所有useSidebar实例
 const sidebarEventTarget = new EventTarget();
@@ -47,12 +47,14 @@ export const DEFAULT_ADMIN_CONFIG = {
   admin: {
     enabled: true,
     channel: true,
+    channelRootOnly: false,
     models: true,
     deployment: true,
     redemption: true,
     user: true,
     subscription: true,
     setting: true,
+    settingRootOnly: false,
   },
 };
 
@@ -134,6 +136,7 @@ export const useSidebar = () => {
             Object.keys(adminConfig[sectionKey]).forEach((moduleKey) => {
               if (
                 moduleKey !== 'enabled' &&
+                !moduleKey.endsWith('RootOnly') &&
                 adminConfig[sectionKey][moduleKey]
               ) {
                 defaultUserConfig[sectionKey][moduleKey] = true;
@@ -150,7 +153,11 @@ export const useSidebar = () => {
         if (adminConfig[sectionKey]?.enabled) {
           defaultUserConfig[sectionKey] = { enabled: true };
           Object.keys(adminConfig[sectionKey]).forEach((moduleKey) => {
-            if (moduleKey !== 'enabled' && adminConfig[sectionKey][moduleKey]) {
+            if (
+              moduleKey !== 'enabled' &&
+              !moduleKey.endsWith('RootOnly') &&
+              adminConfig[sectionKey][moduleKey]
+            ) {
               defaultUserConfig[sectionKey][moduleKey] = true;
             }
           });
@@ -243,7 +250,7 @@ export const useSidebar = () => {
 
       // 功能级别：只有管理员和用户都允许的功能才显示
       Object.keys(adminSection).forEach((moduleKey) => {
-        if (moduleKey === 'enabled') return;
+        if (moduleKey === 'enabled' || moduleKey.endsWith('RootOnly')) return;
 
         const adminAllowed = adminSection[moduleKey];
         // 当userSection存在时检查模块状态，否则默认为true
@@ -262,10 +269,22 @@ export const useSidebar = () => {
   // 检查特定功能是否应该显示
   const isModuleVisible = (sectionKey, moduleKey = null) => {
     if (moduleKey) {
+      if (
+        adminConfig[sectionKey]?.[`${moduleKey}RootOnly`] === true &&
+        !isRoot()
+      ) {
+        return false;
+      }
       return finalConfig[sectionKey]?.[moduleKey] === true;
     } else {
       return finalConfig[sectionKey]?.enabled === true;
     }
+  };
+
+  const canViewRootOnlyModule = (sectionKey, moduleKey) => {
+    return (
+      adminConfig[sectionKey]?.[`${moduleKey}RootOnly`] !== true || isRoot()
+    );
   };
 
   // 检查区域是否有任何可见的功能
@@ -274,7 +293,8 @@ export const useSidebar = () => {
     if (!section?.enabled) return false;
 
     return Object.keys(section).some(
-      (key) => key !== 'enabled' && section[key] === true,
+      (key) =>
+        key !== 'enabled' && !key.endsWith('RootOnly') && section[key] === true,
     );
   };
 
@@ -284,7 +304,8 @@ export const useSidebar = () => {
     if (!section?.enabled) return [];
 
     return Object.keys(section).filter(
-      (key) => key !== 'enabled' && section[key] === true,
+      (key) =>
+        key !== 'enabled' && !key.endsWith('RootOnly') && section[key] === true,
     );
   };
 
@@ -294,6 +315,7 @@ export const useSidebar = () => {
     userConfig,
     finalConfig,
     isModuleVisible,
+    canViewRootOnlyModule,
     hasSectionVisibleModules,
     getVisibleModules,
     refreshUserConfig,

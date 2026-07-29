@@ -131,6 +131,45 @@ func formatUserLogs(logs []*Log, startIdx int) {
 	assignDisplayLogIds(logs, startIdx)
 }
 
+// RedactLogChannelInfo removes channel identifiers and channel-specific admin
+// diagnostics before logs are returned to a restricted administrator.
+func RedactLogChannelInfo(logs []*Log) {
+	for _, log := range logs {
+		if log == nil {
+			continue
+		}
+		log.ChannelId = 0
+		log.ChannelName = ""
+		otherMap, _ := common.StrToMap(log.Other)
+		if otherMap == nil {
+			continue
+		}
+		if adminInfo, ok := otherMap["admin_info"].(map[string]interface{}); ok {
+			delete(adminInfo, "use_channel")
+			delete(adminInfo, "channel_affinity")
+			delete(adminInfo, "is_multi_key")
+			delete(adminInfo, "multi_key_index")
+			for key := range adminInfo {
+				if strings.Contains(strings.ToLower(key), "channel") || strings.Contains(strings.ToLower(key), "multi_key") {
+					delete(adminInfo, key)
+				}
+			}
+		}
+		if op, ok := otherMap["op"].(map[string]interface{}); ok {
+			if action, _ := op["action"].(string); strings.HasPrefix(action, "channel.") {
+				delete(otherMap, "op")
+				log.Content = ""
+			}
+		}
+		if auditInfo, ok := otherMap["audit_info"].(map[string]interface{}); ok {
+			if route, _ := auditInfo["route"].(string); strings.Contains(strings.ToLower(route), "/channel") {
+				delete(otherMap, "audit_info")
+			}
+		}
+		log.Other = common.MapToJsonStr(otherMap)
+	}
+}
+
 func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	order := "id desc"
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
@@ -504,7 +543,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if endTimestamp != 0 {
 		tx = tx.Where("logs.created_at <= ?", endTimestamp)
 	}
-	if channel != 0 {
+	if channel > 0 {
 		tx = tx.Where("logs.channel_id = ?", channel)
 	}
 	if group != "" {
@@ -673,7 +712,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
 		return stat, err
 	}
-	if channel != 0 {
+	if channel > 0 {
 		tx = tx.Where("channel_id = ?", channel)
 		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}

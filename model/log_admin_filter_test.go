@@ -67,3 +67,23 @@ func TestAdminLogFilterMatchesUserRemark(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 10, stat.Quota)
 }
+
+func TestAdminLogFilterIgnoresNonPositiveChannelSentinel(t *testing.T) {
+	truncateTables(t)
+
+	now := time.Now().Unix()
+	logs := []*Log{
+		{Type: LogTypeConsume, CreatedAt: now, ChannelId: 11, Quota: 10},
+		{Type: LogTypeConsume, CreatedAt: now, ChannelId: 22, Quota: 20},
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	filteredLogs, total, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", "", 0, 20, -1, "", "", "", false)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, total)
+	assert.Len(t, filteredLogs, 2)
+
+	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", "", -1, "", false)
+	require.NoError(t, err)
+	assert.Equal(t, 30, stat.Quota)
+}

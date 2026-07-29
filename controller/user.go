@@ -488,7 +488,22 @@ func GetSelf(c *gin.Context) {
 
 	// 计算用户权限信息
 	permissions := calculateUserPermissions(userRole)
-	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
+	canViewChannels := common.CanViewSidebarModule(userRole, "admin", "channel")
+	if !canViewChannels {
+		if sidebarModules, ok := permissions["sidebar_modules"].(map[string]interface{}); ok {
+			adminModules, _ := sidebarModules["admin"].(map[string]interface{})
+			if adminModules == nil {
+				adminModules = map[string]interface{}{}
+				sidebarModules["admin"] = adminModules
+			}
+			adminModules["channel"] = false
+		}
+	}
+	adminPermissions := authz.Capabilities(id, userRole)
+	if !canViewChannels {
+		delete(adminPermissions, authz.ResourceChannel)
+	}
+	permissions["admin_permissions"] = adminPermissions
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()

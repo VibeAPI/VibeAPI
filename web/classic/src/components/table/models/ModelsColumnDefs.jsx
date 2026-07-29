@@ -280,8 +280,9 @@ export const getModelsColumns = ({
   setShowEdit,
   refresh,
   vendorMap,
+  showChannelInfo = true,
 }) => {
-  return [
+  const columns = [
     {
       title: t('图标'),
       dataIndex: 'icon',
@@ -377,4 +378,7 @@ export const getModelsColumns = ({
         ),
     },
   ];
+  return showChannelInfo
+    ? columns
+    : columns.filter((column) => column.dataIndex !== 'bound_channels');
 };

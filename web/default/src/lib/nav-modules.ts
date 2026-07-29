@@ -209,3 +209,23 @@ export function isSidebarModuleEnabled(
     return true
   }
 }
+
+export function isSidebarModuleRootOnly(
+  section: string,
+  module: string
+): boolean {
+  const status = getCachedStatus()
+  const raw = status?.SidebarModulesAdmin
+  if (!raw || String(raw).trim() === '') return false
+
+  try {
+    const parsed = JSON.parse(String(raw)) as Record<
+      string,
+      Record<string, unknown>
+    >
+    const value = parsed[section]?.[`${module}RootOnly`]
+    return parseHeaderNavBoolean(value, false)
+  } catch {
+    return false
+  }
+}

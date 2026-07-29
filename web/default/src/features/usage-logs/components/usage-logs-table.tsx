@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -28,6 +28,7 @@ import {
   useDataTable,
 } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
+import { useCanViewRootOnlySidebarModule } from '@/hooks/use-sidebar-config'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { cn } from '@/lib/utils'
 
@@ -60,12 +61,58 @@ function getColumnVisibilityStorageKey(
   logCategory: LogCategory,
   isAdmin: boolean
 ): string {
-  return `usage-logs:${logCategory}:${isAdmin ? 'admin' : 'user'}:column-visibility`
+  let scope = 'user'
+  if (isAdmin) {
+    scope = 'admin'
+  }
+  return `usage-logs:${logCategory}:${scope}:column-visibility`
 }
 
 function deserializeLogTypeFilter(value: unknown): unknown[] {
-  const values = Array.isArray(value) ? value : value ? [value] : []
+  let values: unknown[] = []
+  if (Array.isArray(value)) {
+    values = value
+  } else if (value) {
+    values = [value]
+  }
   return values.filter((item) => String(item) !== LOG_TYPE_ALL_VALUE)
+}
+
+function getColumnFilters(
+  isAdmin: boolean,
+  showChannelInfo: boolean
+): Array<{
+  columnId: string
+  searchKey: string
+  type: 'array' | 'string'
+  deserialize?: (value: unknown) => unknown[]
+}> {
+  const filters = [
+    {
+      columnId: 'created_at',
+      searchKey: 'type',
+      type: 'array' as const,
+      deserialize: deserializeLogTypeFilter,
+    },
+    { columnId: 'model_name', searchKey: 'model', type: 'string' as const },
+    { columnId: 'token_name', searchKey: 'token', type: 'string' as const },
+    { columnId: 'group', searchKey: 'group', type: 'string' as const },
+  ]
+  if (showChannelInfo) {
+    filters.push({
+      columnId: 'channel',
+      searchKey: 'channel',
+      type: 'string',
+    })
+  }
+  if (isAdmin) {
+    filters.push({
+      columnId: 'username',
+      searchKey: 'username',
+      type: 'string',
+    })
+  }
+  return filters
 }
 
 interface UsageLogsTableProps {
@@ -75,6 +122,8 @@ interface UsageLogsTableProps {
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const { isAdminView: isAdmin } = useLogsViewScope()
+  const canViewChannels = useCanViewRootOnlySidebarModule('admin', 'channel')
+  const showChannelInfo = isAdmin && canViewChannels
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 
@@ -89,31 +138,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     navigate: route.useNavigate(),
     pagination: { defaultPage: 1, defaultPageSize: isMobile ? 20 : 100 },
     globalFilter: { enabled: false },
-    columnFilters: [
-      {
-        columnId: 'created_at',
-        searchKey: 'type',
-        type: 'array' as const,
-        deserialize: deserializeLogTypeFilter,
-      },
-      { columnId: 'model_name', searchKey: 'model', type: 'string' as const },
-      { columnId: 'token_name', searchKey: 'token', type: 'string' as const },
-      { columnId: 'group', searchKey: 'group', type: 'string' as const },
-      ...(isAdmin
-        ? [
-            {
-              columnId: 'channel',
-              searchKey: 'channel',
-              type: 'string' as const,
-            },
-            {
-              columnId: 'username',
-              searchKey: 'username',
-              type: 'string' as const,
-            },
-          ]
-        : []),
-    ],
+    columnFilters: getColumnFilters(isAdmin, showChannelInfo),
   })
 
   const { data, isLoading, isFetching } = useQuery({
@@ -153,7 +178,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const logs = data?.items || []
-  const columns = useColumnsByCategory(logCategory, isAdmin)
+  const columns = useColumnsByCategory(logCategory, isAdmin, showChannelInfo)
   const isLoadingData = isLoading || (isFetching && !data)
 
   const { table } = useDataTable({

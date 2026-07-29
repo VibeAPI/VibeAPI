@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
 import { useMediaQuery } from '@/hooks'
+import { useCanViewRootOnlySidebarModule } from '@/hooks/use-sidebar-config'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { getModels, searchModels, getVendors } from '../api'
@@ -42,6 +43,7 @@ export function ModelsTable() {
   const { t } = useTranslation()
   const { selectedVendor } = useModels()
   const isMobile = useMediaQuery('(max-width: 640px)')
+  const showChannelInfo = useCanViewRootOnlySidebarModule('admin', 'channel')
 
   // URL state management
   const {
@@ -152,7 +154,7 @@ export function ModelsTable() {
   const vendorCounts = data?.data?.vendor_counts
 
   // Columns configuration
-  const columns = useModelsColumns(vendors)
+  const columns = useModelsColumns(vendors, showChannelInfo)
 
   // React Table instance
   const { table } = useDataTable({

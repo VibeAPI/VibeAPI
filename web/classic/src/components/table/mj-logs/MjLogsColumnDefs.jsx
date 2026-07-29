@@ -322,6 +322,7 @@ export const getMjLogsColumns = ({
   openContentModal,
   openImageModal,
   isAdminUser,
+  showChannelInfo = isAdminUser,
 }) => {
   return [
     {
@@ -345,7 +346,7 @@ export const getMjLogsColumns = ({
       title: t('渠道'),
       dataIndex: 'channel_id',
       render: (text, record, index) => {
-        return isAdminUser ? (
+        return showChannelInfo ? (
           <div>
             <Tag
               color={colors[parseInt(text) % colors.length]}

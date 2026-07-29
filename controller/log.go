@@ -20,6 +20,10 @@ func GetAllLogs(c *gin.Context) {
 	tokenName := c.Query("token_name")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
+	canViewChannels := common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel")
+	if !canViewChannels {
+		channel = -1
+	}
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
@@ -30,6 +34,9 @@ func GetAllLogs(c *gin.Context) {
 		return
 	}
 	pageInfo.SetTotal(int(total))
+	if !canViewChannels {
+		model.RedactLogChannelInfo(logs)
+	}
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -106,6 +113,9 @@ func GetLogsStat(c *gin.Context) {
 	userRemark := c.Query("user_remark")
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
+	if !common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel") {
+		channel = -1
+	}
 	group := c.Query("group")
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
 	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, userRemark, tokenName, channel, group, excludeAdmins)

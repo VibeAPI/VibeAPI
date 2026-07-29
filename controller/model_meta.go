@@ -25,7 +25,7 @@ func GetAllModelsMeta(c *gin.Context) {
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
-	enrichModels(modelsMeta)
+	enrichModels(modelsMeta, common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel"))
 
 	// 统计供应商计数（全部数据，不受分页影响）
 	vendorCounts, _ := model.GetVendorModelCounts()
@@ -56,7 +56,7 @@ func SearchModelsMeta(c *gin.Context) {
 		return
 	}
 	// 批量填充附加字段，提升列表接口性能
-	enrichModels(modelsMeta)
+	enrichModels(modelsMeta, common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel"))
 	vendorCounts, _ := model.GetVendorModelCounts()
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(modelsMeta)
@@ -82,7 +82,7 @@ func GetModelMeta(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	enrichModels([]*model.Model{&m})
+	enrichModels([]*model.Model{&m}, common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel"))
 	common.ApiSuccess(c, &m)
 }
 
@@ -170,7 +170,7 @@ func DeleteModelMeta(c *gin.Context) {
 }
 
 // enrichModels 批量填充附加信息：端点、渠道、分组、计费类型，避免 N+1 查询
-func enrichModels(models []*model.Model) {
+func enrichModels(models []*model.Model, includeChannels bool) {
 	if len(models) == 0 {
 		return
 	}
@@ -192,7 +192,10 @@ func enrichModels(models []*model.Model) {
 	}
 
 	// 2) 批量查询精确模型的绑定渠道
-	channelsByModel, _ := model.GetBoundChannelsByModelsMap(exactNames)
+	channelsByModel := make(map[string][]model.BoundChannel)
+	if includeChannels {
+		channelsByModel, _ = model.GetBoundChannelsByModelsMap(exactNames)
+	}
 
 	// 3) 精确模型：端点从缓存、渠道批量映射、分组/计费类型从缓存
 	for name, indices := range exactIdx {
@@ -279,7 +282,10 @@ func enrichModels(models []*model.Model) {
 	for n := range allMatchedSet {
 		allMatched = append(allMatched, n)
 	}
-	matchedChannelsByModel, _ := model.GetBoundChannelsByModelsMap(allMatched)
+	matchedChannelsByModel := make(map[string][]model.BoundChannel)
+	if includeChannels {
+		matchedChannelsByModel, _ = model.GetBoundChannelsByModelsMap(allMatched)
+	}
 
 	// 6) 回填每个规则模型的并集信息
 	for _, idx := range ruleIndices {

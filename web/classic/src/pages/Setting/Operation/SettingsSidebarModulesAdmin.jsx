@@ -61,12 +61,14 @@ export default function SettingsSidebarModulesAdmin(props) {
     admin: {
       enabled: true,
       channel: true,
+      channelRootOnly: false,
       models: true,
       deployment: true,
       redemption: true,
       user: true,
       subscription: true,
       setting: true,
+      settingRootOnly: false,
     },
   });
 
@@ -122,12 +124,14 @@ export default function SettingsSidebarModulesAdmin(props) {
       admin: {
         enabled: true,
         channel: true,
+        channelRootOnly: false,
         models: true,
         deployment: true,
         redemption: true,
         user: true,
         subscription: true,
         setting: true,
+        settingRootOnly: false,
       },
     };
     setSidebarModulesAdmin(defaultModules);
@@ -191,12 +195,14 @@ export default function SettingsSidebarModulesAdmin(props) {
           admin: {
             enabled: true,
             channel: true,
+            channelRootOnly: false,
             models: true,
             deployment: true,
             redemption: true,
             user: true,
             subscription: true,
             setting: true,
+            settingRootOnly: false,
           },
         };
         setSidebarModulesAdmin(defaultModules);
@@ -253,7 +259,15 @@ export default function SettingsSidebarModulesAdmin(props) {
       title: t('管理员区域'),
       description: t('系统管理功能'),
       modules: [
-        { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
+        {
+          key: 'channel',
+          title: t('渠道管理'),
+          description: t('API渠道配置'),
+          rootOnlyKey: 'channelRootOnly',
+          rootOnlyDescription: t(
+            '只有根管理员可以访问渠道；使用日志和流量分流中的渠道信息也会被隐藏。',
+          ),
+        },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
         {
           key: 'deployment',
@@ -275,6 +289,8 @@ export default function SettingsSidebarModulesAdmin(props) {
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),
+          rootOnlyKey: 'settingRootOnly',
+          rootOnlyDescription: t('只有根管理员可以查看和访问系统设置。'),
         },
       ],
     },
@@ -390,6 +406,61 @@ export default function SettingsSidebarModulesAdmin(props) {
                         />
                       </div>
                     </div>
+                    {module.rootOnlyKey && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: '16px',
+                          marginTop: '12px',
+                          paddingTop: '12px',
+                          paddingLeft: '12px',
+                          borderTop: '1px solid var(--semi-color-border)',
+                          borderLeft: '2px solid var(--semi-color-border)',
+                        }}
+                      >
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div
+                            style={{
+                              fontWeight: '600',
+                              fontSize: '13px',
+                              color: 'var(--semi-color-text-0)',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            {t('仅根管理员可见')}
+                          </div>
+                          <Text
+                            type='secondary'
+                            size='small'
+                            style={{
+                              fontSize: '12px',
+                              color: 'var(--semi-color-text-2)',
+                              lineHeight: '1.4',
+                            }}
+                          >
+                            {module.rootOnlyDescription}
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={
+                            sidebarModulesAdmin[section.key]?.[
+                              module.rootOnlyKey
+                            ]
+                          }
+                          onChange={handleModuleChange(
+                            section.key,
+                            module.rootOnlyKey,
+                          )}
+                          size='default'
+                          disabled={
+                            !sidebarModulesAdmin[section.key]?.enabled ||
+                            !sidebarModulesAdmin[section.key]?.[module.key]
+                          }
+                        />
+                      </div>
+                    )}
                   </Card>
                 </Col>
               ))}

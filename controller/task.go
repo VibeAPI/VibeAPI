@@ -28,8 +28,17 @@ func GetAllTask(c *gin.Context) {
 		EndTimestamp:   endTimestamp,
 		ChannelID:      c.Query("channel_id"),
 	}
+	canViewChannels := common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel")
+	if !canViewChannels {
+		queryParams.ChannelID = ""
+	}
 
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	if !canViewChannels {
+		for _, item := range items {
+			item.ChannelId = 0
+		}
+	}
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, true))

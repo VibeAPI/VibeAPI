@@ -21,7 +21,7 @@ import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
+import { AuthRedirect, PrivateRoute, AdminRoute, isRoot } from './helpers';
 import RegisterForm from './components/auth/RegisterForm';
 import LoginForm from './components/auth/LoginForm';
 import NotFound from './pages/NotFound';
@@ -87,6 +87,28 @@ function App() {
     return false; // 默认不需要登录
   }, [statusState?.status?.HeaderNavModules]);
 
+  const channelRootOnly = useMemo(() => {
+    try {
+      const modules = JSON.parse(
+        statusState?.status?.SidebarModulesAdmin || '{}',
+      );
+      return modules.admin?.channelRootOnly === true;
+    } catch {
+      return false;
+    }
+  }, [statusState?.status?.SidebarModulesAdmin]);
+
+  const settingRootOnly = useMemo(() => {
+    try {
+      const modules = JSON.parse(
+        statusState?.status?.SidebarModulesAdmin || '{}',
+      );
+      return modules.admin?.settingRootOnly === true;
+    } catch {
+      return false;
+    }
+  }, [statusState?.status?.SidebarModulesAdmin]);
+
   return (
     <SetupCheck>
       <Routes>
@@ -135,7 +157,7 @@ function App() {
           path='/console/channel'
           element={
             <AdminRoute>
-              <Channel />
+              {channelRootOnly && !isRoot() ? <Forbidden /> : <Channel />}
             </AdminRoute>
           }
         />
@@ -251,9 +273,16 @@ function App() {
           path='/console/setting'
           element={
             <AdminRoute>
-              <Suspense fallback={<Loading></Loading>} key={location.pathname}>
-                <Setting />
-              </Suspense>
+              {settingRootOnly && !isRoot() ? (
+                <Forbidden />
+              ) : (
+                <Suspense
+                  fallback={<Loading></Loading>}
+                  key={location.pathname}
+                >
+                  <Setting />
+                </Suspense>
+              )}
             </AdminRoute>
           }
         />

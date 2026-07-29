@@ -39,7 +39,9 @@ const LogsPage = () => {
       {/* Modals */}
       <ColumnSelectorModal {...logsData} />
       <UserInfoModal {...logsData} />
-      <ChannelAffinityUsageCacheModal {...logsData} />
+      {logsData.showChannelInfo && (
+        <ChannelAffinityUsageCacheModal {...logsData} />
+      )}
       <ParamOverrideModal {...logsData} />
 
       {/* Main Content */}

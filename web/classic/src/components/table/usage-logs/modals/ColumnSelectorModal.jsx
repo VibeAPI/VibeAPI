@@ -32,6 +32,7 @@ const ColumnSelectorModal = ({
   setBillingDisplayMode,
   COLUMN_KEYS,
   isAdminUser,
+  showChannelInfo,
   copyText,
   showUserInfoFunc,
   t,
@@ -51,6 +52,7 @@ const ColumnSelectorModal = ({
     copyText,
     showUserInfoFunc,
     isAdminUser,
+    showChannelInfo,
     billingDisplayMode,
   });
 
@@ -73,7 +75,9 @@ const ColumnSelectorModal = ({
     >
       <div style={{ marginBottom: 20 }}>
         <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontWeight: 600 }}>{t('计费显示模式')}</div>
+          <div style={{ marginBottom: 8, fontWeight: 600 }}>
+            {t('计费显示模式')}
+          </div>
           <RadioGroup
             type='button'
             value={billingDisplayMode}
@@ -103,6 +107,13 @@ const ColumnSelectorModal = ({
         style={{ border: '1px solid var(--semi-color-border)' }}
       >
         {allColumns.map((column) => {
+          if (
+            !showChannelInfo &&
+            (column.key === COLUMN_KEYS.CHANNEL ||
+              column.key === COLUMN_KEYS.RETRY)
+          ) {
+            return null;
+          }
           // Skip admin-only columns for non-admin users
           if (
             !isAdminUser &&

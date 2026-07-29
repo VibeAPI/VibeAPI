@@ -57,6 +57,8 @@ const toTitleCase = (value: string) =>
     .replaceAll(/[_-]+/g, ' ')
     .replaceAll(/\b\w/g, (char) => char.toUpperCase())
 
+type SidebarFieldPath = `${string}.${string}`
+
 export function SidebarModulesSection({
   config,
   initialSerialized,
@@ -201,15 +203,15 @@ export function SidebarModulesSection({
               description: t('Custom sidebar section'),
             }
             const modules = Object.entries(sectionConfig).filter(
-              ([moduleKey]) => moduleKey !== 'enabled'
+              ([moduleKey]) =>
+                moduleKey !== 'enabled' && !moduleKey.endsWith('RootOnly')
             )
 
             return (
               <SettingsControlGroup key={sectionKey}>
                 <FormField
                   control={form.control}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  name={`${sectionKey}.enabled` as any}
+                  name={`${sectionKey}.enabled` as SidebarFieldPath}
                   render={({ field }) => (
                     <SettingsSwitchItem>
                       <SettingsSwitchContent>
@@ -234,12 +236,15 @@ export function SidebarModulesSection({
                       title: toTitleCase(moduleKey),
                       description: t('Custom module'),
                     }
-                    return (
+                    const rootOnlyKey = `${moduleKey}RootOnly`
+                    const isRootOnlyModule =
+                      sectionKey === 'admin' &&
+                      (moduleKey === 'channel' || moduleKey === 'setting')
+
+                    const moduleField = (
                       <FormField
-                        key={`${sectionKey}.${moduleKey}`}
                         control={form.control}
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        name={`${sectionKey}.${moduleKey}` as any}
+                        name={`${sectionKey}.${moduleKey}` as SidebarFieldPath}
                         render={({ field }) => (
                           <SettingsSwitchItem className='py-2'>
                             <SettingsSwitchContent>
@@ -253,14 +258,66 @@ export function SidebarModulesSection({
                                 checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                                 disabled={
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  !form.watch(`${sectionKey}.enabled` as any)
+                                  !form.watch(
+                                    `${sectionKey}.enabled` as SidebarFieldPath
+                                  )
                                 }
                               />
                             </FormControl>
                           </SettingsSwitchItem>
                         )}
                       />
+                    )
+
+                    if (!isRootOnlyModule) {
+                      return (
+                        <div key={`${sectionKey}.${moduleKey}`}>
+                          {moduleField}
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <SettingsControlGroup key={`${sectionKey}.${moduleKey}`}>
+                        {moduleField}
+                        <FormField
+                          control={form.control}
+                          name={
+                            `${sectionKey}.${rootOnlyKey}` as SidebarFieldPath
+                          }
+                          render={({ field }) => (
+                            <SettingsControlChildren>
+                              <SettingsSwitchItem className='py-2'>
+                                <SettingsSwitchContent>
+                                  <FormLabel>
+                                    {t('Root administrators only')}
+                                  </FormLabel>
+                                  <FormDescription>
+                                    {moduleKey === 'channel'
+                                      ? t(
+                                          'Only root administrators can access channels; channel details are also hidden from logs and traffic flow.'
+                                        )
+                                      : t(
+                                          'Only root administrators can see and access system settings.'
+                                        )}
+                                  </FormDescription>
+                                </SettingsSwitchContent>
+                                <FormControl>
+                                  <Switch
+                                    checked={Boolean(field.value)}
+                                    onCheckedChange={field.onChange}
+                                    disabled={
+                                      !form.watch(
+                                        `${sectionKey}.${moduleKey}` as SidebarFieldPath
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                              </SettingsSwitchItem>
+                            </SettingsControlChildren>
+                          )}
+                        />
+                      </SettingsControlGroup>
                     )
                   })}
                 </SettingsControlChildren>

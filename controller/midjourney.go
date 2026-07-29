@@ -303,8 +303,17 @@ func GetAllMidjourney(c *gin.Context) {
 		StartTimestamp: c.Query("start_timestamp"),
 		EndTimestamp:   c.Query("end_timestamp"),
 	}
+	canViewChannels := common.CanViewSidebarModule(c.GetInt("role"), "admin", "channel")
+	if !canViewChannels {
+		queryParams.ChannelID = ""
+	}
 
 	items := model.GetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	if !canViewChannels {
+		for _, item := range items {
+			item.ChannelId = 0
+		}
+	}
 	total := model.CountAllTasks(queryParams)
 
 	if setting.MjForwardUrlEnabled {

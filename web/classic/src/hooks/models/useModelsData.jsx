@@ -22,10 +22,13 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
+import { useSidebar } from '../common/useSidebar';
 
 export const useModelsData = () => {
   const { t } = useTranslation();
   const [compactMode, setCompactMode] = useTableCompactMode('models');
+  const { canViewRootOnlyModule } = useSidebar();
+  const showChannelInfo = canViewRootOnlyModule('admin', 'channel');
 
   // State management
   const [models, setModels] = useState([]);
@@ -435,6 +438,7 @@ export const useModelsData = () => {
     activePage,
     pageSize,
     modelCount,
+    showChannelInfo,
 
     // Selection state
     selectedKeys,

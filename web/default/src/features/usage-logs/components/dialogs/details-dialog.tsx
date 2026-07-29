@@ -452,6 +452,7 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
 interface DetailsDialogProps {
   log: UsageLog
   isAdmin: boolean
+  showChannelInfo?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -636,7 +637,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {props.isAdmin && props.log.channel > 0 && (
+          {props.isAdmin &&
+            props.showChannelInfo !== false &&
+            props.log.channel > 0 && (
             <DetailRow
               label={t('Channel')}
               value={
@@ -654,9 +657,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {channelChain && props.isAdmin && (
-            <DetailRow label={t('Retry Chain')} value={channelChain} mono />
-          )}
+          {channelChain &&
+            props.isAdmin &&
+            props.showChannelInfo !== false && (
+              <DetailRow label={t('Retry Chain')} value={channelChain} mono />
+            )}
 
           {props.log.token_name && (
             <DetailRow label={t('Token')} value={props.log.token_name} mono />
