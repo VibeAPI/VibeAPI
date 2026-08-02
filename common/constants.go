@@ -243,6 +243,14 @@ var (
 	SearchRateLimitEnable         = true
 	SearchRateLimitNum            = 10
 	SearchRateLimitDuration int64 = 60
+
+	// Per-token balance query rate limit. This is deliberately higher than the
+	// critical-operation limit so a dashboard polling every five seconds is not
+	// throttled, while preventing a leaked read-only token from being used as a
+	// high-volume balance probe.
+	BalanceRateLimitEnable         = true
+	BalanceRateLimitNum            = 60
+	BalanceRateLimitDuration int64 = 60
 )
 
 var RateLimitKeyExpirationDuration = 20 * time.Minute

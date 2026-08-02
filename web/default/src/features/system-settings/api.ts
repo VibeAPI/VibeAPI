@@ -41,6 +41,50 @@ export async function updateSystemOption(request: UpdateOptionRequest) {
   return res.data
 }
 
+export type UpstreamBalanceAccountSetting = {
+  id: string
+  name: string
+  base_url: string
+  token: string
+  has_token: boolean
+}
+
+export type UpstreamBalanceSettings = {
+  enabled: boolean
+  visibility: 'all' | 'admin'
+  refresh_interval_seconds: number
+  accounts: UpstreamBalanceAccountSetting[]
+}
+
+export async function getUpstreamBalanceSettings() {
+  const res = await api.get<{
+    success: boolean
+    message: string
+    data?: UpstreamBalanceSettings
+  }>('/api/option/upstream-balances', {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to load settings')
+  }
+  return res.data
+}
+
+export async function updateUpstreamBalanceSettings(
+  request: UpstreamBalanceSettings
+) {
+  const res = await api.put<UpdateOptionResponse>(
+    '/api/option/upstream-balances',
+    request,
+    {
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    }
+  )
+  return res.data
+}
+
 export async function confirmPaymentCompliance() {
   const res = await api.post<ConfirmPaymentComplianceResponse>(
     '/api/option/payment_compliance',

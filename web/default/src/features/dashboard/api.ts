@@ -22,6 +22,7 @@ import type {
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
+  UpstreamAccountBalance,
 } from './types'
 
 // ============================================================================
@@ -91,5 +92,20 @@ export async function getUptimeStatus() {
   const res = await api.get<{ success: boolean; data: UptimeGroupResult[] }>(
     '/api/uptime/status'
   )
+  return res.data
+}
+
+export async function getUpstreamBalances() {
+  const res = await api.get<{
+    success: boolean
+    message: string
+    data?: UpstreamAccountBalance[]
+  }>('/api/upstream-balances/', {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success) {
+    throw new Error(res.data.message || 'Failed to load upstream balances')
+  }
   return res.data
 }

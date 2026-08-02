@@ -16,6 +16,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -109,6 +111,18 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 
 	db := openTokenControllerTestDB(t)
 	migrateTokenControllerTestDB(t, db)
+	return db
+}
+
+func setupTokenBalanceControllerTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db := openTokenControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() {
+		common.QuotaPerUnit = previousQuotaPerUnit
+	})
 	return db
 }
 
@@ -505,6 +519,32 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 }
 
+func TestUpdateTokenPersistsBalanceQueryPermission(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "editable-balance-token", "balancepermission1234")
+
+	body := map[string]any{
+		"id":                     token.Id,
+		"name":                   token.Name,
+		"expired_time":           -1,
+		"remain_quota":           100,
+		"unlimited_quota":        true,
+		"model_limits_enabled":   false,
+		"model_limits":           "",
+		"can_query_user_balance": true,
+		"group":                  "default",
+		"cross_group_retry":      false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var persisted model.Token
+	require.NoError(t, db.First(&persisted, token.Id).Error)
+	assert.True(t, persisted.CanQueryUserBalance)
+}
+
 func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "owned-token", "owner1234token5678")
@@ -537,4 +577,70 @@ func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	if strings.Contains(unauthorizedRecorder.Body.String(), token.Key) {
 		t.Fatalf("unauthorized key response leaked raw token key: %s", unauthorizedRecorder.Body.String())
 	}
+}
+
+func TestGetTokenUserBalanceRequiresExplicitTokenPermission(t *testing.T) {
+	db := setupTokenBalanceControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "balance-owner", Quota: 123456}).Error)
+	token := seedToken(t, db, 1, "balance-token", "balance1234token5678")
+
+	deniedContext, deniedRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/balance", nil, 1)
+	deniedContext.Set("token_id", token.Id)
+	deniedContext.Set("token_key", token.Key)
+	GetTokenUserBalance(deniedContext)
+
+	assert.Equal(t, http.StatusForbidden, deniedRecorder.Code)
+	assert.NotContains(t, deniedRecorder.Body.String(), "123456")
+
+	require.NoError(t, db.Model(token).Update("can_query_user_balance", true).Error)
+	allowedContext, allowedRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/balance", nil, 1)
+	allowedContext.Set("token_id", token.Id)
+	allowedContext.Set("token_key", token.Key)
+	GetTokenUserBalance(allowedContext)
+
+	assert.Equal(t, http.StatusOK, allowedRecorder.Code)
+	response := decodeAPIResponse(t, allowedRecorder)
+	require.True(t, response.Success)
+	var balance struct {
+		Object   string  `json:"object"`
+		Balance  float64 `json:"balance"`
+		Currency string  `json:"currency"`
+		Quota    int     `json:"quota"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &balance))
+	assert.Equal(t, "account_balance", balance.Object)
+	assert.InDelta(t, 0.246912, balance.Balance, 0.000001)
+	assert.Equal(t, "USD", balance.Currency)
+	assert.Equal(t, 123456, balance.Quota)
+	assert.Equal(t, "no-store", allowedRecorder.Header().Get("Cache-Control"))
+}
+
+func TestGetTokenUserBalanceEnforcesTokenRestrictions(t *testing.T) {
+	db := setupTokenBalanceControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "restricted-owner", Quota: 123456}).Error)
+	token := seedToken(t, db, 1, "restricted-balance-token", "restrictedbalance1234")
+	require.NoError(t, db.Model(token).Updates(map[string]any{
+		"can_query_user_balance": true,
+		"expired_time":           common.GetTimestamp() - 1,
+	}).Error)
+
+	expiredContext, expiredRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/balance", nil, 1)
+	expiredContext.Set("token_id", token.Id)
+	expiredContext.Set("token_key", token.Key)
+	GetTokenUserBalance(expiredContext)
+	assert.Equal(t, http.StatusUnauthorized, expiredRecorder.Code)
+	assert.NotContains(t, expiredRecorder.Body.String(), "123456")
+
+	allowIps := "203.0.113.10"
+	require.NoError(t, db.Model(token).Updates(map[string]any{
+		"expired_time": -1,
+		"allow_ips":    allowIps,
+	}).Error)
+	ipContext, ipRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/balance", nil, 1)
+	ipContext.Set("token_id", token.Id)
+	ipContext.Set("token_key", token.Key)
+	ipContext.Request.Header.Set("X-Forwarded-For", "198.51.100.20")
+	GetTokenUserBalance(ipContext)
+	assert.Equal(t, http.StatusForbidden, ipRecorder.Code)
+	assert.NotContains(t, ipRecorder.Body.String(), "123456")
 }

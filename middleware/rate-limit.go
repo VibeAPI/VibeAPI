@@ -203,3 +203,38 @@ func SearchRateLimit() func(c *gin.Context) {
 	}
 	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
+
+// TokenBalanceRateLimit returns a per-token limiter for the read-only balance
+// endpoint. It must run after TokenAuthReadOnly so token_id is available.
+func TokenBalanceRateLimit() func(c *gin.Context) {
+	if !common.BalanceRateLimitEnable || common.BalanceRateLimitNum <= 0 || common.BalanceRateLimitDuration <= 0 {
+		return defNext
+	}
+	if common.RedisEnabled {
+		return func(c *gin.Context) {
+			tokenId := c.GetInt("token_id")
+			if tokenId == 0 {
+				c.Status(http.StatusUnauthorized)
+				c.Abort()
+				return
+			}
+			key := fmt.Sprintf("rateLimit:TB:token:%d", tokenId)
+			userRedisRateLimiter(c, common.BalanceRateLimitNum, common.BalanceRateLimitDuration, key)
+		}
+	}
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	return func(c *gin.Context) {
+		tokenId := c.GetInt("token_id")
+		if tokenId == 0 {
+			c.Status(http.StatusUnauthorized)
+			c.Abort()
+			return
+		}
+		key := fmt.Sprintf("TB:token:%d", tokenId)
+		if !inMemoryRateLimiter.Request(key, common.BalanceRateLimitNum, common.BalanceRateLimitDuration) {
+			c.Status(http.StatusTooManyRequests)
+			c.Abort()
+			return
+		}
+	}
+}

@@ -245,8 +245,10 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
 	for k, v := range values {
-		if err := updateOptionMap(k, v); err != nil {
+		if err := updateOptionMapLocked(k, v); err != nil {
 			return err
 		}
 	}
@@ -256,6 +258,12 @@ func UpdateOptionsBulk(values map[string]string) error {
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	return updateOptionMapLocked(key, value)
+}
+
+// updateOptionMapLocked updates runtime configuration while the caller holds
+// OptionMapRWMutex. Bulk updates use it to keep related settings consistent.
+func updateOptionMapLocked(key string, value string) (err error) {
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

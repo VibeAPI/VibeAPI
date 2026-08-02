@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -164,6 +165,87 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
+func GetTokenUserBalance(c *gin.Context) {
+	userId := c.GetInt("id")
+	tokenKey := c.GetString("token_key")
+	if tokenKey == "" {
+		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+		return
+	}
+	var token *model.Token
+	if value, exists := c.Get("token"); exists {
+		var ok bool
+		token, ok = value.(*model.Token)
+		if !ok {
+			common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+			return
+		}
+	} else {
+		// Keep this fallback cache-first for callers/tests that invoke the
+		// controller without TokenAuthReadOnly. Never force a DB read here:
+		// in batch-update mode the DB can lag behind the authoritative Redis
+		// quota and writing that stale snapshot back would restore spent quota.
+		var err error
+		token, err = model.GetTokenByKey(tokenKey, false)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+			return
+		}
+	}
+	if token.Id != c.GetInt("token_id") || token.UserId != userId || token.Key != tokenKey {
+		common.ApiErrorI18n(c, i18n.MsgTokenGetInfoFailed)
+		return
+	}
+	if !token.CanQueryUserBalance {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": "This token is not allowed to query the account balance",
+		})
+		return
+	}
+	if token.Status != common.TokenStatusEnabled ||
+		(token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp()) ||
+		(!token.UnlimitedQuota && token.RemainQuota <= 0) {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "This token is disabled or expired",
+		})
+		return
+	}
+	if allowIps := token.GetIpLimits(); len(allowIps) > 0 {
+		clientIp := net.ParseIP(c.ClientIP())
+		if clientIp == nil || !common.IsIpInCIDRList(clientIp, allowIps) {
+			c.JSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"message": "The client IP is not allowed by this token",
+			})
+			return
+		}
+	}
+
+	// Read the hot-path quota cache. A forced DB read here can write a stale
+	// quota back into Redis while batched billing updates are in flight.
+	quota, err := model.GetUserQuota(userId, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if common.QuotaPerUnit <= 0 {
+		common.ApiErrorMsg(c, "Invalid quota unit configuration")
+		return
+	}
+
+	c.Header("Cache-Control", "no-store")
+	common.ApiSuccess(c, gin.H{
+		"object":         "account_balance",
+		"balance":        float64(quota) / common.QuotaPerUnit,
+		"currency":       "USD",
+		"quota":          quota,
+		"quota_per_unit": common.QuotaPerUnit,
+		"updated_at":     common.GetTimestamp(),
+	})
+}
+
 func AddToken(c *gin.Context) {
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
@@ -208,19 +290,20 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
-		Name:               token.Name,
-		Key:                key,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        token.ExpiredTime,
-		RemainQuota:        token.RemainQuota,
-		UnlimitedQuota:     token.UnlimitedQuota,
-		ModelLimitsEnabled: token.ModelLimitsEnabled,
-		ModelLimits:        token.ModelLimits,
-		AllowIps:           token.AllowIps,
-		Group:              token.Group,
-		CrossGroupRetry:    token.CrossGroupRetry,
+		UserId:              c.GetInt("id"),
+		Name:                token.Name,
+		Key:                 key,
+		CreatedTime:         common.GetTimestamp(),
+		AccessedTime:        common.GetTimestamp(),
+		ExpiredTime:         token.ExpiredTime,
+		RemainQuota:         token.RemainQuota,
+		UnlimitedQuota:      token.UnlimitedQuota,
+		ModelLimitsEnabled:  token.ModelLimitsEnabled,
+		ModelLimits:         token.ModelLimits,
+		AllowIps:            token.AllowIps,
+		CanQueryUserBalance: token.CanQueryUserBalance,
+		Group:               token.Group,
+		CrossGroupRetry:     token.CrossGroupRetry,
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -297,6 +380,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		cleanToken.CanQueryUserBalance = token.CanQueryUserBalance
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}

@@ -180,6 +180,18 @@ export interface UptimeGroupResult {
   monitors: UptimeMonitor[]
 }
 
+export interface UpstreamAccountBalance {
+  id: string
+  name: string
+  success: boolean
+  balance?: number
+  currency?: 'USD'
+  quota?: number
+  quota_per_unit?: number
+  updated_at?: number
+  message?: string
+}
+
 // ============================================================================
 // Dashboard Filter Types
 // ============================================================================

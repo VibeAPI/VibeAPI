@@ -206,6 +206,14 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/waffo-pancake/save", controller.SaveWaffoPancake)
 			optionRoute.POST("/waffo-pancake/subscription-product", controller.CreateWaffoPancakeSubscriptionProduct)
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
+			optionRoute.GET("/upstream-balances", controller.GetUpstreamBalanceSettings)
+			optionRoute.PUT("/upstream-balances", controller.SaveUpstreamBalanceSettings)
+		}
+
+		upstreamBalanceRoute := apiRouter.Group("/upstream-balances")
+		upstreamBalanceRoute.Use(middleware.UserAuth())
+		{
+			upstreamBalanceRoute.GET("/", controller.GetUpstreamBalances)
 		}
 
 		// Custom OAuth provider management (root only)
@@ -252,12 +260,13 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		usageRoute := apiRouter.Group("/usage")
-		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
+		usageRoute.Use(middleware.CORS())
 		{
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
-				tokenUsageRoute.GET("/", controller.GetTokenUsage)
+				tokenUsageRoute.GET("/", middleware.CriticalRateLimit(), controller.GetTokenUsage)
+				tokenUsageRoute.GET("/balance", middleware.TokenBalanceRateLimit(), controller.GetTokenUserBalance)
 			}
 		}
 

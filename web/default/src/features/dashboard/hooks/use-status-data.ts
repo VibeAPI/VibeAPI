@@ -70,5 +70,15 @@ export function useDashboardContentVisibility() {
     announcements: hasStatus && status?.announcements_enabled !== false,
     faq: hasStatus && status?.faq_enabled !== false,
     uptimeKuma: hasStatus && status?.uptime_kuma_enabled !== false,
+    upstreamBalance: hasStatus && status?.upstream_balance_enabled === true,
+    upstreamBalanceVisibility:
+      status?.upstream_balance_visibility === 'all' ? 'all' : 'admin',
+    upstreamBalanceRefreshIntervalSeconds:
+      typeof status?.upstream_balance_refresh_interval_seconds === 'number'
+        ? Math.min(
+            300,
+            Math.max(5, status.upstream_balance_refresh_interval_seconds)
+          )
+        : 10,
   }
 }

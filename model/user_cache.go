@@ -2,15 +2,13 @@ package model
 
 import (
 	"fmt"
-	"time"
+	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/bytedance/gopkg/util/gopool"
 )
 
 // UserBase struct remains the same as it represents the cached data structure
@@ -63,18 +61,6 @@ func InvalidateUserCache(userId int) error {
 	return invalidateUserCache(userId)
 }
 
-func populateUserCache(user User) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-
-	return common.RedisHSetObj(
-		getUserCacheKey(user.Id),
-		user.ToBaseUser(),
-		time.Duration(common.RedisKeyCacheSeconds())*time.Second,
-	)
-}
-
 // updateUserCache refreshes non-quota user cache fields.
 // Quota is maintained by atomic quota delta paths and must not be overwritten
 // by stale user snapshots from profile/settings updates.
@@ -99,19 +85,6 @@ func updateUserCache(user User) error {
 
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (userCache *UserBase, err error) {
-	var user *User
-	var fromDB bool
-	defer func() {
-		// Update Redis cache asynchronously on successful DB read
-		if shouldUpdateRedis(fromDB, err) && user != nil {
-			gopool.Go(func() {
-				if err := populateUserCache(*user); err != nil {
-					common.SysLog("failed to update user status cache: " + err.Error())
-				}
-			})
-		}
-	}()
-
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
 	if err == nil {
@@ -119,12 +92,10 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// If Redis fails, get from DB
-	fromDB = true
-	user, err = GetUserById(userId, false)
+	user, err := GetUserById(userId, false)
 	if err != nil {
 		return nil, err // Return nil and error if DB lookup fails
 	}
-
 	// Create cache object from user data
 	userCache = &UserBase{
 		Id:       user.Id,
@@ -137,6 +108,20 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	return userCache, nil
+}
+
+// GetUserStatus reads only the status needed by token authentication. It does
+// not repopulate the complete user cache on a miss, because that snapshot also
+// contains quota and could overwrite an in-flight Redis quota decrement.
+func GetUserStatus(userId int) (status int, err error) {
+	if common.RedisEnabled {
+		status, err = getUserStatusCache(userId)
+		if err == nil {
+			return status, nil
+		}
+	}
+	err = DB.Model(&User{}).Where("id = ?", userId).Select("status").Find(&status).Error
+	return status, err
 }
 
 func cacheGetUserBase(userId int) (*UserBase, error) {
@@ -174,19 +159,27 @@ func getUserGroupCache(userId int) (string, error) {
 }
 
 func getUserQuotaCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
+	value, err := common.RedisHGetField(getUserCacheKey(userId), "Quota")
 	if err != nil {
 		return 0, err
 	}
-	return cache.Quota, nil
+	quota, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid cached user quota: %w", err)
+	}
+	return quota, nil
 }
 
 func getUserStatusCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
+	value, err := common.RedisHGetField(getUserCacheKey(userId), "Status")
 	if err != nil {
 		return 0, err
 	}
-	return cache.Status, nil
+	status, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid cached user status: %w", err)
+	}
+	return status, nil
 }
 
 func getUserNameCache(userId int) (string, error) {

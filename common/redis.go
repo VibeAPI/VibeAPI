@@ -238,6 +238,19 @@ func RedisHGetObj(key string, obj interface{}) error {
 	return nil
 }
 
+// RedisHGetField reads one hash field without materializing the complete
+// cached object. This is important for quota-sensitive callers: loading a
+// whole user snapshot on a cache miss can write a stale quota back to Redis.
+func RedisHGetField(key, field string) (string, error) {
+	if !RedisEnabled || RDB == nil {
+		return "", errors.New("redis is not enabled")
+	}
+	if DebugEnabled {
+		SysLog(fmt.Sprintf("Redis HGET field: key=%s, field=%s", key, field))
+	}
+	return RDB.HGet(context.Background(), key, field).Result()
+}
+
 // RedisIncr Add this function to handle atomic increments
 func RedisIncr(key string, delta int64) error {
 	if DebugEnabled {

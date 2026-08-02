@@ -66,6 +66,7 @@ import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
+import { UpstreamBalancePanel } from './upstream-balance-panel'
 import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
@@ -465,6 +466,9 @@ export function OverviewDashboard() {
     announcements: showAnnouncementsPanel,
     faq: showFAQPanel,
     uptimeKuma: showUptimePanel,
+    upstreamBalance: upstreamBalanceEnabled,
+    upstreamBalanceVisibility,
+    upstreamBalanceRefreshIntervalSeconds,
   } = useDashboardContentVisibility()
   const [manualSetupGuideExpanded, setManualSetupGuideExpanded] = useState<
     boolean | null
@@ -474,6 +478,8 @@ export function OverviewDashboard() {
   const remainQuota = Number(user?.quota ?? 0)
   const usedQuota = Number(user?.used_quota ?? 0)
   const isAdmin = Boolean(user?.role && user.role >= ROLE.ADMIN)
+  const showUpstreamBalancePanel =
+    upstreamBalanceEnabled && (upstreamBalanceVisibility === 'all' || isAdmin)
   const canViewChannels = useCanViewRootOnlySidebarModule('admin', 'channel')
 
   const apiKeysQuery = useQuery({
@@ -561,7 +567,8 @@ export function OverviewDashboard() {
     () =>
       quickActions.filter(
         (action) =>
-          !action.adminOnly || (isAdmin && (action.to !== '/channels' || canViewChannels))
+          !action.adminOnly ||
+          (isAdmin && (action.to !== '/channels' || canViewChannels))
       ),
     [canViewChannels, isAdmin, quickActions]
   )
@@ -615,7 +622,8 @@ export function OverviewDashboard() {
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
   const showLeftContentPanels =
     isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
-  const showContentPanels = showLeftContentPanels || showUptimePanel
+  const showRightContentPanels = showUptimePanel || showUpstreamBalancePanel
+  const showContentPanels = showLeftContentPanels || showRightContentPanels
 
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
@@ -762,7 +770,7 @@ export function OverviewDashboard() {
           className={cn(
             'grid grid-cols-1 gap-4',
             showLeftContentPanels &&
-              showUptimePanel &&
+              showRightContentPanels &&
               'xl:grid-cols-[minmax(0,1fr)_22rem]'
           )}
         >
@@ -796,10 +804,23 @@ export function OverviewDashboard() {
               )}
             </div>
           )}
-          {showUptimePanel && (
-            <CardStaggerItem>
-              <UptimePanel />
-            </CardStaggerItem>
+          {showRightContentPanels && (
+            <div className='grid min-w-0 grid-cols-1 gap-4'>
+              {showUptimePanel && (
+                <CardStaggerItem>
+                  <UptimePanel />
+                </CardStaggerItem>
+              )}
+              {showUpstreamBalancePanel && (
+                <CardStaggerItem>
+                  <UpstreamBalancePanel
+                    refreshIntervalSeconds={
+                      upstreamBalanceRefreshIntervalSeconds
+                    }
+                  />
+                </CardStaggerItem>
+              )}
+            </div>
           )}
         </CardStaggerContainer>
       )}
