@@ -187,6 +187,11 @@ export interface UpstreamAccountBalance {
   balance?: number
   currency?: 'USD'
   quota?: number
+  used_quota?: number
+  usage?: Array<{
+    timestamp: number
+    quota: number
+  }>
   quota_per_unit?: number
   updated_at?: number
   message?: string

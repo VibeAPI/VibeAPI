@@ -117,7 +117,7 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 func setupTokenBalanceControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := openTokenControllerTestDB(t)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.QuotaData{}))
 	previousQuotaPerUnit := common.QuotaPerUnit
 	common.QuotaPerUnit = 500000
 	t.Cleanup(func() {
@@ -602,17 +602,59 @@ func TestGetTokenUserBalanceRequiresExplicitTokenPermission(t *testing.T) {
 	response := decodeAPIResponse(t, allowedRecorder)
 	require.True(t, response.Success)
 	var balance struct {
-		Object   string  `json:"object"`
-		Balance  float64 `json:"balance"`
-		Currency string  `json:"currency"`
-		Quota    int     `json:"quota"`
+		Object    string                     `json:"object"`
+		Balance   float64                    `json:"balance"`
+		Currency  string                     `json:"currency"`
+		Quota     int                        `json:"quota"`
+		UsedQuota int64                      `json:"used_quota"`
+		Usage     []accountBalanceUsagePoint `json:"usage"`
 	}
 	require.NoError(t, common.Unmarshal(response.Data, &balance))
 	assert.Equal(t, "account_balance", balance.Object)
 	assert.InDelta(t, 0.246912, balance.Balance, 0.000001)
 	assert.Equal(t, "USD", balance.Currency)
 	assert.Equal(t, 123456, balance.Quota)
+	assert.Zero(t, balance.UsedQuota)
+	require.Len(t, balance.Usage, 24)
 	assert.Equal(t, "no-store", allowedRecorder.Header().Get("Cache-Control"))
+}
+
+func TestGetTokenUserBalanceReturnsAccountWideUsage(t *testing.T) {
+	db := setupTokenBalanceControllerTestDB(t)
+	currentHour := common.GetTimestamp()
+	currentHour -= currentHour % 3600
+	require.NoError(t, db.Create(&model.User{
+		Id: 1, Username: "balance-owner", Role: common.RoleCommonUser, Quota: 5000000, UsedQuota: 200000, AffCode: "balance-owner",
+	}).Error)
+	require.NoError(t, db.Create(&model.User{
+		Id: 2, Username: "other-user", Role: common.RoleCommonUser, UsedQuota: 300000, AffCode: "other-user",
+	}).Error)
+	require.NoError(t, db.Create([]model.QuotaData{
+		{UserID: 1, Username: "balance-owner", ModelName: "model-a", CreatedAt: currentHour - 3600, TokenID: 1, Quota: 50000},
+		{UserID: 1, Username: "balance-owner", ModelName: "model-b", CreatedAt: currentHour - 3600, TokenID: 2, Quota: 70000},
+		{UserID: 1, Username: "balance-owner", ModelName: "model-a", CreatedAt: currentHour, TokenID: 1, Quota: 30000},
+		{UserID: 2, Username: "other-user", ModelName: "model-a", CreatedAt: currentHour - 3600, TokenID: 3, Quota: 90000},
+	}).Error)
+	token := seedToken(t, db, 1, "account-balance-token", "accountbalance1234567")
+	require.NoError(t, db.Model(token).Update("can_query_user_balance", true).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/usage/token/balance", nil, 1)
+	ctx.Set("token_id", token.Id)
+	ctx.Set("token_key", token.Key)
+	GetTokenUserBalance(ctx)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success)
+	var balance struct {
+		UsedQuota int64                      `json:"used_quota"`
+		Usage     []accountBalanceUsagePoint `json:"usage"`
+	}
+	require.NoError(t, common.Unmarshal(response.Data, &balance))
+	assert.Equal(t, int64(200000), balance.UsedQuota)
+	require.Len(t, balance.Usage, 24)
+	assert.Equal(t, int64(120000), balance.Usage[22].Quota)
+	assert.Equal(t, int64(30000), balance.Usage[23].Quota)
 }
 
 func TestGetTokenUserBalanceEnforcesTokenRestrictions(t *testing.T) {

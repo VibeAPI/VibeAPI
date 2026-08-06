@@ -56,26 +56,35 @@ type upstreamBalanceSaveRequest struct {
 }
 
 type upstreamAccountBalance struct {
-	Id           string  `json:"id"`
-	Name         string  `json:"name"`
-	Success      bool    `json:"success"`
-	Balance      float64 `json:"balance"`
-	Currency     string  `json:"currency,omitempty"`
-	Quota        int     `json:"quota"`
-	QuotaPerUnit float64 `json:"quota_per_unit"`
-	UpdatedAt    int64   `json:"updated_at,omitempty"`
-	Message      string  `json:"message,omitempty"`
+	Id           string                     `json:"id"`
+	Name         string                     `json:"name"`
+	Success      bool                       `json:"success"`
+	Balance      float64                    `json:"balance"`
+	Currency     string                     `json:"currency,omitempty"`
+	Quota        int                        `json:"quota"`
+	UsedQuota    *int64                     `json:"used_quota,omitempty"`
+	Usage        []accountBalanceUsagePoint `json:"usage,omitempty"`
+	QuotaPerUnit float64                    `json:"quota_per_unit"`
+	UpdatedAt    int64                      `json:"updated_at,omitempty"`
+	Message      string                     `json:"message,omitempty"`
+}
+
+type accountBalanceUsagePoint struct {
+	Timestamp int64 `json:"timestamp"`
+	Quota     int64 `json:"quota"`
 }
 
 type upstreamBalanceAPIResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	Data    struct {
-		Quota        int     `json:"quota"`
-		QuotaPerUnit float64 `json:"quota_per_unit"`
-		Balance      float64 `json:"balance"`
-		Currency     string  `json:"currency"`
-		UpdatedAt    int64   `json:"updated_at"`
+		Quota        int                        `json:"quota"`
+		UsedQuota    *int64                     `json:"used_quota"`
+		QuotaPerUnit float64                    `json:"quota_per_unit"`
+		Balance      float64                    `json:"balance"`
+		Currency     string                     `json:"currency"`
+		UpdatedAt    int64                      `json:"updated_at"`
+		Usage        []accountBalanceUsagePoint `json:"usage"`
 	} `json:"data"`
 }
 
@@ -360,6 +369,8 @@ func fetchUpstreamBalance(ctx context.Context, account operation_setting.Upstrea
 	result.Balance = balance
 	result.Currency = "USD"
 	result.Quota = payload.Data.Quota
+	result.UsedQuota = payload.Data.UsedQuota
+	result.Usage = payload.Data.Usage
 	result.QuotaPerUnit = payload.Data.QuotaPerUnit
 	result.UpdatedAt = payload.Data.UpdatedAt
 	return result

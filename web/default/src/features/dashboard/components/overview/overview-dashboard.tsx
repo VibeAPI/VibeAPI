@@ -66,7 +66,6 @@ import { ApiInfoPanel } from './api-info-panel'
 import { FAQPanel } from './faq-panel'
 import { PerformanceHealthPanel } from './performance-health-panel'
 import { SummaryCards } from './summary-cards'
-import { UpstreamBalancePanel } from './upstream-balance-panel'
 import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
@@ -622,7 +621,7 @@ export function OverviewDashboard() {
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
   const showLeftContentPanels =
     isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
-  const showRightContentPanels = showUptimePanel || showUpstreamBalancePanel
+  const showRightContentPanels = showUptimePanel
   const showContentPanels = showLeftContentPanels || showRightContentPanels
 
   const handleSetupGuideToggle = () => {
@@ -763,7 +762,12 @@ export function OverviewDashboard() {
         </CardStaggerContainer>
       )}
 
-      <SummaryCards />
+      <SummaryCards
+        showUpstreamBalances={showUpstreamBalancePanel}
+        upstreamBalanceRefreshIntervalSeconds={
+          upstreamBalanceRefreshIntervalSeconds
+        }
+      />
 
       {showContentPanels && (
         <CardStaggerContainer
@@ -809,15 +813,6 @@ export function OverviewDashboard() {
               {showUptimePanel && (
                 <CardStaggerItem>
                   <UptimePanel />
-                </CardStaggerItem>
-              )}
-              {showUpstreamBalancePanel && (
-                <CardStaggerItem>
-                  <UpstreamBalancePanel
-                    refreshIntervalSeconds={
-                      upstreamBalanceRefreshIntervalSeconds
-                    }
-                  />
                 </CardStaggerItem>
               )}
             </div>

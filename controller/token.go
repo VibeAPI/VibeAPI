@@ -230,9 +230,34 @@ func GetTokenUserBalance(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	usedQuota, err := model.GetUserUsedQuota(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if common.QuotaPerUnit <= 0 {
 		common.ApiErrorMsg(c, "Invalid quota unit configuration")
 		return
+	}
+
+	currentHour := common.GetTimestamp()
+	currentHour -= currentHour % 3600
+	startHour := currentHour - 23*3600
+	quotaDates, err := model.GetQuotaDataByUserId(userId, startHour, currentHour)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	usageByHour := make(map[int64]int64, 24)
+	for _, item := range quotaDates {
+		usageByHour[item.CreatedAt] += int64(item.Quota)
+	}
+	usage := make([]accountBalanceUsagePoint, 0, 24)
+	for timestamp := startHour; timestamp <= currentHour; timestamp += 3600 {
+		usage = append(usage, accountBalanceUsagePoint{
+			Timestamp: timestamp,
+			Quota:     usageByHour[timestamp],
+		})
 	}
 
 	c.Header("Cache-Control", "no-store")
@@ -241,6 +266,9 @@ func GetTokenUserBalance(c *gin.Context) {
 		"balance":        float64(quota) / common.QuotaPerUnit,
 		"currency":       "USD",
 		"quota":          quota,
+		"used_balance":   float64(usedQuota) / common.QuotaPerUnit,
+		"used_quota":     usedQuota,
+		"usage":          usage,
 		"quota_per_unit": common.QuotaPerUnit,
 		"updated_at":     common.GetTimestamp(),
 	})

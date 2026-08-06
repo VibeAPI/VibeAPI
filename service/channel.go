@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -62,6 +65,79 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	lowerMessage := strings.ToLower(err.Error())
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
+}
+
+// ShouldDisableChannelForTaskFailure applies the regular automatic-disable
+// rules to a terminal asynchronous task failure. Task-level interruptions such
+// as "abandoned" are deliberately excluded because they do not establish that
+// the channel credentials or upstream account are unhealthy.
+func ShouldDisableChannelForTaskFailure(reason string, upstreamCode int) bool {
+	if !common.AutomaticDisableChannelEnabled {
+		return false
+	}
+	reason = strings.TrimSpace(reason)
+	lowerReason := strings.ToLower(reason)
+	if reason == "" || strings.Contains(lowerReason, "abandoned") {
+		return false
+	}
+	for _, credentialError := range []string{"auth failed", "authentication failed", "invalid api key"} {
+		if strings.Contains(lowerReason, credentialError) {
+			return true
+		}
+	}
+
+	statusCode := upstreamCode
+	if statusCode < 100 || statusCode > 599 {
+		statusCode = 0
+		for _, field := range strings.FieldsFunc(reason, func(r rune) bool {
+			return r < '0' || r > '9'
+		}) {
+			code, err := strconv.Atoi(field)
+			if err == nil && code >= 100 && code <= 599 && operation_setting.ShouldDisableByStatusCode(code) {
+				statusCode = code
+				break
+			}
+		}
+	}
+
+	return ShouldDisableChannel(types.NewOpenAIError(
+		fmt.Errorf("%s", reason),
+		types.ErrorCodeBadResponseStatusCode,
+		statusCode,
+	))
+}
+
+func DisableChannelForTaskFailure(ctx context.Context, ch *model.Channel, task *model.Task, upstreamCode int) {
+	if ch == nil || task == nil || !ShouldDisableChannelForTaskFailure(task.FailReason, upstreamCode) {
+		return
+	}
+	usingKey := ""
+	if ch.ChannelInfo.IsMultiKey {
+		if task.PrivateData.ChannelMultiKeyIndex == nil {
+			logger.LogWarn(ctx, fmt.Sprintf("Task %s failed with a channel error, but its legacy record has no multi-key index; skip automatic disable", task.TaskID))
+			return
+		}
+		keys := ch.GetKeys()
+		keyIndex := *task.PrivateData.ChannelMultiKeyIndex
+		if keyIndex < 0 || keyIndex >= len(keys) {
+			logger.LogWarn(ctx, fmt.Sprintf("Task %s has invalid multi-key index %d for channel #%d; skip automatic disable", task.TaskID, keyIndex, ch.Id))
+			return
+		}
+		usingKey = keys[keyIndex]
+		fingerprint := fmt.Sprintf("%x", common.Sha256Raw([]byte(usingKey)))
+		if task.PrivateData.ChannelKeyFingerprint == "" || task.PrivateData.ChannelKeyFingerprint != fingerprint {
+			logger.LogWarn(ctx, fmt.Sprintf("Task %s multi-key fingerprint no longer matches channel #%d key index %d; skip automatic disable", task.TaskID, ch.Id, keyIndex))
+			return
+		}
+	}
+	DisableChannel(*types.NewChannelError(
+		ch.Id,
+		ch.Type,
+		ch.Name,
+		ch.ChannelInfo.IsMultiKey,
+		usingKey,
+		ch.GetAutoBan(),
+	), fmt.Sprintf("异步任务 %s 轮询失败: %s", task.TaskID, task.FailReason))
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

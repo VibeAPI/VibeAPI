@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { StatCard } from '../ui/stat-card'
+import { UpstreamBalanceCards } from './upstream-balance-panel'
 
 const SUMMARY_SPARKLINE_BUCKETS = 12
 
@@ -136,7 +137,10 @@ const HEALTH_CONFIG: Record<
   },
 }
 
-export function SummaryCards() {
+export function SummaryCards(props: {
+  showUpstreamBalances: boolean
+  upstreamBalanceRefreshIntervalSeconds: number
+}) {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const { status, loading } = useStatus()
@@ -263,7 +267,14 @@ export function SummaryCards() {
               </p>
             </div>
           </div>
-          <StaggerContainer className='grid grid-cols-3 gap-1.5 sm:gap-3'>
+          <StaggerContainer
+            className={cn(
+              'grid gap-1.5 sm:gap-3',
+              props.showUpstreamBalances
+                ? 'grid-cols-2 lg:grid-cols-4'
+                : 'grid-cols-3'
+            )}
+          >
             {items.map((it) => (
               <StaggerItem
                 key={it.key}
@@ -282,6 +293,13 @@ export function SummaryCards() {
                 />
               </StaggerItem>
             ))}
+            {props.showUpstreamBalances ? (
+              <UpstreamBalanceCards
+                refreshIntervalSeconds={
+                  props.upstreamBalanceRefreshIntervalSeconds
+                }
+              />
+            ) : null}
           </StaggerContainer>
         </div>
 

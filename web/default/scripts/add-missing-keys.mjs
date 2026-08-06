@@ -22,6 +22,7 @@ const excludeAdministratorsTranslations = {
 
 const commonTranslations = {
   en: {
+    'System total available quota': 'System total available quota',
     Rejected: 'Rejected',
     'Reject Order': 'Reject Order',
     'Rejection reason': 'Rejection reason',
@@ -55,6 +56,7 @@ const commonTranslations = {
       'Only root administrators can see and access system settings.',
   },
   zh: {
+    'System total available quota': '系统总可用额度',
     Rejected: '已拒绝',
     'Reject Order': '拒绝订单',
     'Rejection reason': '拒绝原因',
@@ -88,6 +90,7 @@ const commonTranslations = {
       '只有根管理员可以查看和访问系统设置。',
   },
   'zh-TW': {
+    'System total available quota': '系統總可用額度',
     Rejected: '已拒絕',
     'Reject Order': '拒絕訂單',
     'Rejection reason': '拒絕原因',
@@ -121,6 +124,7 @@ const commonTranslations = {
       '只有根管理員可以查看和存取系統設定。',
   },
   fr: {
+    'System total available quota': 'Quota total disponible du système',
     Rejected: 'Refusé',
     'Reject Order': 'Refuser la commande',
     'Rejection reason': 'Motif du refus',
@@ -154,6 +158,7 @@ const commonTranslations = {
       'Seuls les administrateurs racine peuvent voir et accéder aux paramètres système.',
   },
   ja: {
+    'System total available quota': 'システム全体の利用可能枠',
     Rejected: '却下済み',
     'Reject Order': '注文を却下',
     'Rejection reason': '却下理由',
@@ -187,6 +192,7 @@ const commonTranslations = {
       'システム設定を表示してアクセスできるのはルート管理者のみです。',
   },
   ru: {
+    'System total available quota': 'Общая доступная квота системы',
     Rejected: 'Отклонено',
     'Reject Order': 'Отклонить заказ',
     'Rejection reason': 'Причина отклонения',
@@ -220,6 +226,7 @@ const commonTranslations = {
       'Только корневые администраторы могут видеть и открывать системные настройки.',
   },
   vi: {
+    'System total available quota': 'Tổng hạn mức khả dụng của hệ thống',
     Rejected: 'Đã từ chối',
     'Reject Order': 'Từ chối đơn hàng',
     'Rejection reason': 'Lý do từ chối',
