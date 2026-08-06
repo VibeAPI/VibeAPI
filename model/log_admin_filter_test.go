@@ -87,3 +87,29 @@ func TestAdminLogFilterIgnoresNonPositiveChannelSentinel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 30, stat.Quota)
 }
+
+func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
+	truncateTables(t)
+
+	users := []*User{
+		{Username: "topup-export-user", Role: common.RoleCommonUser, AffCode: "topup-export-user"},
+		{Username: "topup-export-admin", Role: common.RoleAdminUser, AffCode: "topup-export-admin"},
+	}
+	require.NoError(t, DB.Create(&users).Error)
+
+	logs := []*Log{
+		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 100, Quota: 500_000},
+		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 200, Quota: 1_000_000},
+		{UserId: users[1].Id, Username: users[1].Username, Type: LogTypeTopup, CreatedAt: 250, Quota: 1_500_000},
+		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeConsume, CreatedAt: 275, Quota: 1},
+		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 300, Quota: 2_000_000},
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	exported, err := GetTopupLogsForExport(150, 275, true)
+	require.NoError(t, err)
+	require.Len(t, exported, 1)
+	assert.Equal(t, users[0].Username, exported[0].Username)
+	assert.Equal(t, int64(200), exported[0].CreatedAt)
+	assert.Equal(t, 1_000_000, exported[0].Quota)
+}

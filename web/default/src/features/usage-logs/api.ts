@@ -84,6 +84,20 @@ export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
 
+export async function exportTopupLogs(params: {
+  start_timestamp: number
+  end_timestamp: number
+  exclude_admins?: boolean
+}): Promise<Blob> {
+  const queryParams = buildQueryParams(params)
+  const res = await api.get(`/api/log/topup/export?${queryParams}`, {
+    responseType: 'blob',
+    disableDuplicate: true,
+    skipErrorHandler: true,
+  })
+  return res.data
+}
+
 export async function getUserInfo(
   userId: number
 ): Promise<{ success: boolean; message?: string; data?: UserInfo }> {

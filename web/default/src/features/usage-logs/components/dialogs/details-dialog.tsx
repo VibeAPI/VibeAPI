@@ -622,6 +622,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
       <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-x-hidden py-1 sm:space-y-3'>
         {/* Overview section - key identifiers */}
         <div className='min-w-0 space-y-1'>
+          {isTopup && props.log.quota > 0 && (
+            <DetailRow
+              label={t('Recharge Amount')}
+              value={formatLogQuota(props.log.quota)}
+              mono
+            />
+          )}
           {props.log.request_id && (
             <DetailRow
               label={t('Request ID')}

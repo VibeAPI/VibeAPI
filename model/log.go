@@ -4,17 +4,74 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 
 	"gorm.io/gorm"
 )
+
+var legacyTopupAmountPattern = regexp.MustCompile(`(?:充值金额|充值额度|兑换码充值)\s*[:：]?\s*([^0-9\s.,，]*)\s*([0-9]+(?:\.[0-9]+)?)`)
+
+// GetTopupQuota returns the credited quota for a successful top-up log.
+// New records store quota structurally. The fallback keeps historical records
+// usable by parsing the amount rendered under the site's current quota display.
+func GetTopupQuota(log *Log) (int, bool) {
+	if log == nil || log.Type != LogTypeTopup {
+		return 0, false
+	}
+	if strings.Contains(log.Content, "提交对公支付订单") {
+		return 0, false
+	}
+	if log.Quota > 0 {
+		return log.Quota, true
+	}
+	match := legacyTopupAmountPattern.FindStringSubmatch(log.Content)
+	if len(match) != 3 {
+		return 0, false
+	}
+	amount, err := strconv.ParseFloat(match[2], 64)
+	if err != nil || amount <= 0 {
+		return 0, false
+	}
+	if strings.Contains(log.Content, "点额度") || strings.Contains(log.Content, "使用Creem充值成功") {
+		quota, clamp := common.QuotaRoundChecked(amount)
+		return quota, clamp == nil && quota > 0
+	}
+
+	rate := 1.0
+	switch match[1] {
+	case "¥", "￥":
+		rate = operation_setting.USDExchangeRate
+	case "", "$", "＄":
+	default:
+		rate = operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	}
+	if rate <= 0 {
+		return 0, false
+	}
+	quota, clamp := common.QuotaRoundChecked(amount / rate * common.QuotaPerUnit)
+	return quota, clamp == nil && quota > 0
+}
+
+func hydrateTopupLogQuota(logs []*Log) {
+	for _, log := range logs {
+		if log == nil || log.Type != LogTypeTopup || log.Quota > 0 {
+			continue
+		}
+		if quota, ok := GetTopupQuota(log); ok {
+			log.Quota = quota
+		}
+	}
+}
 
 func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
 	if value == "" {
@@ -290,7 +347,7 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 	}
 }
 
-func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string, quota int) {
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
@@ -309,6 +366,7 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		CreatedAt: common.GetTimestamp(),
 		Type:      LogTypeTopup,
 		Content:   content,
+		Quota:     quota,
 		Ip:        callerIp,
 		Other:     common.MapToJsonStr(other),
 	}
@@ -316,6 +374,39 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 	if err != nil {
 		common.SysLog("failed to record topup log: " + err.Error())
 	}
+}
+
+const TopupLogExportLimit = 100000
+
+// GetTopupLogsForExport returns top-up logs in the requested time range.
+// The hard limit keeps a single export from loading an unbounded log table.
+func GetTopupLogsForExport(startTimestamp int64, endTimestamp int64, excludeAdmins bool) (logs []*Log, err error) {
+	tx := LOG_DB.Model(&Log{}).
+		Select("user_id", "username", "created_at", "quota", "content").
+		Where("type = ?", LogTypeTopup)
+
+	if startTimestamp != 0 {
+		tx = tx.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("created_at <= ?", endTimestamp)
+	}
+	if excludeAdmins {
+		adminUserIds, adminErr := getAdminUserIds()
+		if adminErr != nil {
+			return nil, adminErr
+		}
+		if len(adminUserIds) > 0 {
+			tx = tx.Where("user_id NOT IN ?", adminUserIds)
+		}
+	}
+
+	order := "created_at asc, id asc"
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		order = "created_at asc, request_id asc"
+	}
+	err = tx.Order(order).Limit(TopupLogExportLimit + 1).Find(&logs).Error
+	return logs, err
 }
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
@@ -573,6 +664,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		assignDisplayLogIds(logs, startIdx)
 	}
+	hydrateTopupLogQuota(logs)
 
 	channelIds := types.NewSet[int]()
 	for _, log := range logs {
@@ -663,6 +755,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 		return nil, 0, errors.New("查询日志失败")
 	}
 
+	hydrateTopupLogQuota(logs)
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
 }

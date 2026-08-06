@@ -893,6 +893,49 @@ for (const [locale, translations] of Object.entries(modelIconTranslations)) {
   Object.assign(newKeys[locale], translations)
 }
 
+const topupExportTranslations = {
+  en: {
+    'Export Top-up Records': 'Export Top-up Records',
+    'Failed to export top-up records': 'Failed to export top-up records',
+    'No top-up records to export': 'No top-up records to export',
+  },
+  zh: {
+    'Export Top-up Records': '导出充值记录',
+    'Failed to export top-up records': '导出充值记录失败',
+    'No top-up records to export': '当前日期范围内没有可导出的充值记录',
+  },
+  'zh-TW': {
+    'Export Top-up Records': '匯出充值記錄',
+    'Failed to export top-up records': '匯出充值記錄失敗',
+    'No top-up records to export': '目前日期範圍內沒有可匯出的充值記錄',
+  },
+  fr: {
+    'Export Top-up Records': 'Exporter les recharges',
+    'Failed to export top-up records': 'Échec de l’export des recharges',
+    'No top-up records to export': 'Aucune recharge à exporter',
+  },
+  ja: {
+    'Export Top-up Records': 'チャージ履歴をエクスポート',
+    'Failed to export top-up records':
+      'チャージ履歴のエクスポートに失敗しました',
+    'No top-up records to export': 'エクスポートできるチャージ履歴がありません',
+  },
+  ru: {
+    'Export Top-up Records': 'Экспорт пополнений',
+    'Failed to export top-up records': 'Не удалось экспортировать пополнения',
+    'No top-up records to export': 'Нет пополнений для экспорта',
+  },
+  vi: {
+    'Export Top-up Records': 'Xuất lịch sử nạp tiền',
+    'Failed to export top-up records': 'Không thể xuất lịch sử nạp tiền',
+    'No top-up records to export': 'Không có lượt nạp tiền để xuất',
+  },
+}
+
+for (const [locale, translations] of Object.entries(topupExportTranslations)) {
+  Object.assign(newKeys[locale], translations)
+}
+
 async function main() {
   let totalApplied = 0
 

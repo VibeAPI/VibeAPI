@@ -40,7 +40,7 @@ import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import { LOG_TYPE_ALL_VALUE } from '../../constants'
+import { LOG_TYPE_ALL_VALUE, LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
@@ -130,6 +130,14 @@ function buildTypeDetailSegments(
 
   if (log.type === 6) {
     return [{ text: t('Async task refund') }]
+  }
+
+  if (log.type === LOG_TYPE_ENUM.TOPUP && log.quota > 0) {
+    return [
+      {
+        text: `${t('Recharge Amount')}: ${formatLogQuota(log.quota)}`,
+      },
+    ]
   }
 
   if (log.type !== 2) return []
@@ -702,9 +710,15 @@ export function useCommonLogsColumns(
       header: t('Cost'),
       cell: ({ row }) => {
         const log = row.original
-        if (!isDisplayableLogType(log.type)) return null
+        if (
+          !isDisplayableLogType(log.type) &&
+          log.type !== LOG_TYPE_ENUM.TOPUP
+        ) {
+          return null
+        }
 
         const quota = row.getValue('quota') as number
+        if (log.type === LOG_TYPE_ENUM.TOPUP && quota <= 0) return null
         const other = parseLogOther(log.other)
         const isSubscription = other?.billing_source === 'subscription'
 

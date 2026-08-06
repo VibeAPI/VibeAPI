@@ -1,13 +1,18 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 func GetAllLogs(c *gin.Context) {
@@ -40,6 +45,58 @@ func GetAllLogs(c *gin.Context) {
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func ExportTopupLogs(c *gin.Context) {
+	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
+	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
+	if startTimestamp <= 0 || endTimestamp <= 0 || startTimestamp > endTimestamp {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid time range"})
+		return
+	}
+	if common.QuotaPerUnit <= 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "invalid quota conversion configuration"})
+		return
+	}
+	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
+	logs, err := model.GetTopupLogsForExport(startTimestamp, endTimestamp, excludeAdmins)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+	if len(logs) > model.TopupLogExportLimit {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "too many top-up records; narrow the time range"})
+		return
+	}
+
+	var export strings.Builder
+	export.Grow(len(logs) * 32)
+	currencySymbol := operation_setting.GetCurrencySymbol()
+	if currencySymbol == "" {
+		currencySymbol = "$"
+	}
+	usernameSanitizer := strings.NewReplacer("\t", " ", "\r", " ", "\n", " ")
+	for _, log := range logs {
+		if log == nil || log.Username == "" {
+			continue
+		}
+		quota, ok := model.GetTopupQuota(log)
+		if !ok {
+			continue
+		}
+		amount := decimal.NewFromInt(int64(quota)).
+			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
+			Mul(decimal.NewFromFloat(operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate))).
+			Round(6).
+			String()
+		date := time.Unix(log.CreatedAt, 0).In(time.Local).Format("2006/01/02")
+		username := usernameSanitizer.Replace(log.Username)
+		fmt.Fprintf(&export, "%s\t%s%s\t%s\n", username, currencySymbol, amount, date)
+	}
+
+	filename := "topup-records-" + time.Now().Format("20060102-150405") + ".txt"
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Data(http.StatusOK, "text/plain; charset=utf-8", []byte(export.String()))
 }
 
 func GetUserLogs(c *gin.Context) {

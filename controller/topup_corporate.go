@@ -143,6 +143,7 @@ func SubmitCorporateTopUp(c *gin.Context) {
 		c.ClientIP(),
 		topUp.PaymentMethod,
 		"submitted",
+		0,
 	)
 
 	common.ApiSuccess(c, gin.H{"trade_no": tradeNo})
