@@ -88,10 +88,10 @@ export async function exportTopupLogs(params: {
   start_timestamp: number
   end_timestamp: number
   exclude_admins?: boolean
-}): Promise<Blob> {
+}): Promise<string> {
   const queryParams = buildQueryParams(params)
   const res = await api.get(`/api/log/topup/export?${queryParams}`, {
-    responseType: 'blob',
+    responseType: 'text',
     disableDuplicate: true,
     skipErrorHandler: true,
   })

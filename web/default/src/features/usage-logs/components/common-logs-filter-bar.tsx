@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
-import { Download, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { ClipboardCopy, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -39,8 +39,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useCanViewRootOnlySidebarModule } from '@/hooks/use-sidebar-config'
-import { formatDateStr } from '@/lib/format'
 
 import { exportTopupLogs } from '../api'
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
@@ -127,7 +127,11 @@ export function CommonLogsFilterBar<TData>(
   const canViewChannels = useCanViewRootOnlySidebarModule('admin', 'channel')
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
-  const [exportingTopups, setExportingTopups] = useState(false)
+  const [copyingTopups, setCopyingTopups] = useState(false)
+  const { copyToClipboard } = useCopyToClipboard({
+    successMessage: t('Top-up records copied'),
+    errorMessage: t('Failed to copy top-up records'),
+  })
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -254,36 +258,32 @@ export function CommonLogsFilterBar<TData>(
     [navigate]
   )
 
-  const handleExportTopups = useCallback(async () => {
-    if (!filters.startTime || !filters.endTime || exportingTopups) return
+  const handleCopyTopups = useCallback(async () => {
+    if (!filters.startTime || !filters.endTime || copyingTopups) return
 
-    setExportingTopups(true)
+    setCopyingTopups(true)
     try {
-      const blob = await exportTopupLogs({
+      const records = await exportTopupLogs({
         start_timestamp: Math.floor(filters.startTime.getTime() / 1000),
         end_timestamp: Math.floor(filters.endTime.getTime() / 1000),
         exclude_admins: searchParams.excludeAdmins || undefined,
       })
-      if (blob.size === 0) {
-        toast.info(t('No top-up records to export'))
+      const text = records.trim()
+      if (!text) {
+        toast.info(t('No top-up records to copy'))
         return
       }
 
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      const start = formatDateStr(filters.startTime)
-      const end = formatDateStr(filters.endTime)
-      link.href = url
-      link.download = `topup-records-${start}-${end}.txt`
-      link.click()
-      URL.revokeObjectURL(url)
+      const copied = await copyToClipboard(text)
+      if (!copied) return
     } catch {
-      toast.error(t('Failed to export top-up records'))
+      toast.error(t('Failed to copy top-up records'))
     } finally {
-      setExportingTopups(false)
+      setCopyingTopups(false)
     }
   }, [
-    exportingTopups,
+    copyingTopups,
+    copyToClipboard,
     filters.endTime,
     filters.startTime,
     searchParams.excludeAdmins,
@@ -372,15 +372,15 @@ export function CommonLogsFilterBar<TData>(
         <Button
           type='button'
           variant='outline'
-          onClick={handleExportTopups}
-          disabled={exportingTopups}
+          onClick={handleCopyTopups}
+          disabled={copyingTopups}
         >
-          {exportingTopups ? (
+          {copyingTopups ? (
             <Loader2 className='animate-spin' aria-hidden='true' />
           ) : (
-            <Download aria-hidden='true' />
+            <ClipboardCopy aria-hidden='true' />
           )}
-          {t('Export Top-up Records')}
+          {t('Copy Top-up Records')}
         </Button>
       )}
     </>

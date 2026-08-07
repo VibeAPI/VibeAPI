@@ -36,7 +36,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatBillingCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+} from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +47,7 @@ import { LOG_TYPE_ALL_VALUE, LOG_TYPE_ENUM } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
+  getTopupPaymentAmount,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
@@ -133,6 +137,14 @@ function buildTypeDetailSegments(
   }
 
   if (log.type === LOG_TYPE_ENUM.TOPUP && log.quota > 0) {
+    const paymentAmount = getTopupPaymentAmount(other)
+    if (paymentAmount != null) {
+      return [
+        {
+          text: `${t('Actual Amount')}: ${formatLocalCurrencyAmount(paymentAmount, { digitsLarge: 6, digitsSmall: 6, abbreviate: false })}`,
+        },
+      ]
+    }
     return [
       {
         text: `${t('Recharge Amount')}: ${formatLogQuota(log.quota)}`,
@@ -718,9 +730,30 @@ export function useCommonLogsColumns(
         }
 
         const quota = row.getValue('quota') as number
-        if (log.type === LOG_TYPE_ENUM.TOPUP && quota <= 0) return null
         const other = parseLogOther(log.other)
         const isSubscription = other?.billing_source === 'subscription'
+
+        if (log.type === LOG_TYPE_ENUM.TOPUP) {
+          const paymentAmount = getTopupPaymentAmount(other)
+          if (paymentAmount == null) return null
+          const paymentAmountStr = formatLocalCurrencyAmount(paymentAmount, {
+            digitsLarge: 6,
+            digitsSmall: 6,
+            abbreviate: false,
+          })
+          const paymentAmountDisplay = splitQuotaDisplay(paymentAmountStr)
+
+          return (
+            <div className='flex flex-col gap-0.5'>
+              <span className='border-border/80 bg-muted/60 inline-flex h-6 w-fit items-center rounded-md border px-2 [font-family:var(--font-body)] text-sm leading-none font-semibold tabular-nums'>
+                {paymentAmountDisplay.prefix && (
+                  <span className='mr-1'>{paymentAmountDisplay.prefix}</span>
+                )}
+                <span>{paymentAmountDisplay.amount}</span>
+              </span>
+            </div>
+          )
+        }
 
         if (isSubscription) {
           return (

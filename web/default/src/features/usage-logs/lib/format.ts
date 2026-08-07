@@ -106,6 +106,21 @@ export function parseLogOther(other: string): LogOtherData | null {
   }
 }
 
+export function getTopupPaymentAmount(
+  other: LogOtherData | null
+): number | null {
+  const paymentAmount =
+    other?.payment_amount ?? other?.admin_info?.payment_amount
+  if (
+    typeof paymentAmount !== 'number' ||
+    !Number.isFinite(paymentAmount) ||
+    paymentAmount <= 0
+  ) {
+    return null
+  }
+  return paymentAmount
+}
+
 /**
  * Get time color based on duration (in seconds)
  */

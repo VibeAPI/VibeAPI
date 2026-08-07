@@ -20,6 +20,7 @@ import (
 )
 
 var legacyTopupAmountPattern = regexp.MustCompile(`(?:充值金额|充值额度|兑换码充值)\s*[:：]?\s*([^0-9\s.,，]*)\s*([0-9]+(?:\.[0-9]+)?)`)
+var topupPaymentAmountPattern = regexp.MustCompile(`支付金额\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)`)
 
 // GetTopupQuota returns the credited quota for a successful top-up log.
 // New records store quota structurally. The fallback keeps historical records
@@ -62,6 +63,70 @@ func GetTopupQuota(log *Log) (int, bool) {
 	return quota, clamp == nil && quota > 0
 }
 
+// GetTopupPaymentAmount returns the amount actually paid for a completed
+// top-up log. New logs keep the value in admin_info; the content parser keeps
+// historical logs (and older nodes) usable as well.
+func GetTopupPaymentAmount(log *Log) (float64, bool) {
+	if log == nil || log.Type != LogTypeTopup {
+		return 0, false
+	}
+	// Pending corporate orders and subscription records are type=1 for legacy
+	// reasons, but they are not wallet top-up records for this export.
+	if strings.Contains(log.Content, "提交对公支付订单") || strings.Contains(log.Content, "订阅购买成功") {
+		return 0, false
+	}
+
+	if log.Other != "" {
+		if other, err := common.StrToMap(log.Other); err == nil {
+			if adminInfo, ok := other["admin_info"].(map[string]interface{}); ok {
+				if value, ok := adminInfo["payment_amount"]; ok {
+					if amount, ok := topupPaymentAmountValue(value); ok {
+						return amount, true
+					}
+				}
+			}
+			if value, ok := other["payment_amount"]; ok {
+				if amount, ok := topupPaymentAmountValue(value); ok {
+					return amount, true
+				}
+			}
+		}
+	}
+
+	match := topupPaymentAmountPattern.FindStringSubmatch(log.Content)
+	if len(match) != 2 {
+		return 0, false
+	}
+	amount, err := strconv.ParseFloat(match[1], 64)
+	if err != nil || amount <= 0 {
+		return 0, false
+	}
+	return amount, true
+}
+
+func topupPaymentAmountValue(value interface{}) (float64, bool) {
+	var amount float64
+	switch typed := value.(type) {
+	case float64:
+		amount = typed
+	case float32:
+		amount = float64(typed)
+	case int:
+		amount = float64(typed)
+	case int64:
+		amount = float64(typed)
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, false
+		}
+		amount = parsed
+	default:
+		return 0, false
+	}
+	return amount, amount > 0
+}
+
 func hydrateTopupLogQuota(logs []*Log) {
 	for _, log := range logs {
 		if log == nil || log.Type != LogTypeTopup || log.Quota > 0 {
@@ -70,6 +135,29 @@ func hydrateTopupLogQuota(logs []*Log) {
 		if quota, ok := GetTopupQuota(log); ok {
 			log.Quota = quota
 		}
+	}
+}
+
+func hydrateTopupLogPaymentAmount(logs []*Log) {
+	for _, log := range logs {
+		if log == nil || log.Type != LogTypeTopup {
+			continue
+		}
+		amount, ok := GetTopupPaymentAmount(log)
+		if !ok {
+			continue
+		}
+		other, err := common.StrToMap(log.Other)
+		if err != nil || other == nil {
+			other = map[string]interface{}{}
+		}
+		if existing, exists := other["payment_amount"]; exists {
+			if _, valid := topupPaymentAmountValue(existing); valid {
+				continue
+			}
+		}
+		other["payment_amount"] = amount
+		log.Other = common.MapToJsonStr(other)
 	}
 }
 
@@ -357,8 +445,15 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		"callback_payment_method": callbackPaymentMethod,
 		"version":                 common.Version,
 	}
+	paymentAmount, hasPaymentAmount := GetTopupPaymentAmount(&Log{Type: LogTypeTopup, Content: content})
+	if hasPaymentAmount {
+		adminInfo["payment_amount"] = paymentAmount
+	}
 	other := map[string]interface{}{
 		"admin_info": adminInfo,
+	}
+	if hasPaymentAmount {
+		other["payment_amount"] = paymentAmount
 	}
 	log := &Log{
 		UserId:    userId,
@@ -382,7 +477,7 @@ const TopupLogExportLimit = 100000
 // The hard limit keeps a single export from loading an unbounded log table.
 func GetTopupLogsForExport(startTimestamp int64, endTimestamp int64, excludeAdmins bool) (logs []*Log, err error) {
 	tx := LOG_DB.Model(&Log{}).
-		Select("user_id", "username", "created_at", "quota", "content").
+		Select("user_id", "username", "created_at", "quota", "content", "type", "other").
 		Where("type = ?", LogTypeTopup)
 
 	if startTimestamp != 0 {
@@ -665,6 +760,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 		assignDisplayLogIds(logs, startIdx)
 	}
 	hydrateTopupLogQuota(logs)
+	hydrateTopupLogPaymentAmount(logs)
 
 	channelIds := types.NewSet[int]()
 	for _, log := range logs {
@@ -756,6 +852,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	}
 
 	hydrateTopupLogQuota(logs)
+	hydrateTopupLogPaymentAmount(logs)
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
 }

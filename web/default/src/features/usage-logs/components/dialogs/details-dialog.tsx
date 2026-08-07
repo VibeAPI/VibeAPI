@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
 import {
   Copy,
   Check,
@@ -31,7 +32,6 @@ import {
   Info,
   LogIn,
 } from 'lucide-react'
-import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -41,13 +41,17 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatBillingCurrencyFromUSD,
+  formatLocalCurrencyAmount,
+} from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { UsageLog } from '../../data/schema'
 import {
   parseLogOther,
+  getTopupPaymentAmount,
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
@@ -179,7 +183,9 @@ function getUsageBillingPathLabel(
   }
 }
 
-function isUsageBillingPathLocal(adminInfo: LogOtherData['admin_info']): boolean {
+function isUsageBillingPathLocal(
+  adminInfo: LogOtherData['admin_info']
+): boolean {
   if (adminInfo?.usage_billing_path) {
     return adminInfo.usage_billing_path === USAGE_BILLING_PATH.LOCAL
   }
@@ -468,6 +474,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isRefund = props.log.type === 6
   const isConsume = props.log.type === 2
   const isTopup = props.log.type === 1
+  const topupPaymentAmount = isTopup ? getTopupPaymentAmount(other) : null
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
   const isTieredBilling =
@@ -622,10 +629,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
       <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-x-hidden py-1 sm:space-y-3'>
         {/* Overview section - key identifiers */}
         <div className='min-w-0 space-y-1'>
-          {isTopup && props.log.quota > 0 && (
+          {topupPaymentAmount != null && (
             <DetailRow
-              label={t('Recharge Amount')}
-              value={formatLogQuota(props.log.quota)}
+              label={t('Actual Amount')}
+              value={formatLocalCurrencyAmount(topupPaymentAmount, {
+                digitsLarge: 6,
+                digitsSmall: 6,
+                abbreviate: false,
+              })}
               mono
             />
           )}
@@ -647,28 +658,26 @@ export function DetailsDialog(props: DetailsDialogProps) {
           {props.isAdmin &&
             props.showChannelInfo !== false &&
             props.log.channel > 0 && (
-            <DetailRow
-              label={t('Channel')}
-              value={
-                <span>
-                  {props.log.channel}
-                  {props.log.channel_name && (
-                    <span className='text-muted-foreground'>
-                      {' '}
-                      ({props.log.channel_name})
-                    </span>
-                  )}
-                </span>
-              }
-              mono
-            />
-          )}
-
-          {channelChain &&
-            props.isAdmin &&
-            props.showChannelInfo !== false && (
-              <DetailRow label={t('Retry Chain')} value={channelChain} mono />
+              <DetailRow
+                label={t('Channel')}
+                value={
+                  <span>
+                    {props.log.channel}
+                    {props.log.channel_name && (
+                      <span className='text-muted-foreground'>
+                        {' '}
+                        ({props.log.channel_name})
+                      </span>
+                    )}
+                  </span>
+                }
+                mono
+              />
             )}
+
+          {channelChain && props.isAdmin && props.showChannelInfo !== false && (
+            <DetailRow label={t('Retry Chain')} value={channelChain} mono />
+          )}
 
           {props.log.token_name && (
             <DetailRow label={t('Token')} value={props.log.token_name} mono />
