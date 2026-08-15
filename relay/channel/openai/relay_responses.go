@@ -33,11 +33,15 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
-
 	if responsesResponse.HasImageGenerationCall() {
 		c.Set("image_generation_call", true)
 		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
 		c.Set("image_generation_call_size", responsesResponse.GetSize())
+	}
+
+	responseBody, err = relaycommon.RewriteResponseModel(responseBody, info, "model")
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 	}
 
 	// 写入新的 response body
@@ -89,7 +93,13 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		sendResponsesStreamData(c, streamResponse, data)
+		responseData, err := relaycommon.RewriteResponseModel(common.StringToByteSlice(data), info, "response.model")
+		if err != nil {
+			logger.LogError(c, "failed to rewrite response model: "+err.Error())
+			sr.Error(err)
+			return
+		}
+		sendResponsesStreamData(c, streamResponse, string(responseData))
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {

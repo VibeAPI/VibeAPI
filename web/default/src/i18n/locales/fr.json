@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "Renvoyer des données conformes à un schéma JSON",
     "Return Error": "Retourner l'erreur",
     "Return per-token log probabilities": "Retourner les log-probabilités par jeton",
+    "Return requested model name": "Renvoyer le nom du modèle demandé",
+    "Return the model name requested by the client instead of the mapped upstream model name": "Renvoyer au client le nom du modèle demandé au lieu du nom du modèle amont mappé",
     "Return to dashboard": "Retour au tableau de bord",
     "Return vector embeddings for inputs": "Renvoyer des embeddings vectoriels pour les entrées",
     "Reveal API key": "Afficher la clé API",

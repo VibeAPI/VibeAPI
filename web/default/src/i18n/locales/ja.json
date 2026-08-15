@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "JSON スキーマに準拠したデータを返却",
     "Return Error": "エラーを返す",
     "Return per-token log probabilities": "トークンごとの対数確率を返します",
+    "Return requested model name": "要求されたモデル名を返す",
+    "Return the model name requested by the client instead of the mapped upstream model name": "マッピング後の上流モデル名ではなく、クライアントが要求したモデル名を返します",
     "Return to dashboard": "ダッシュボードに戻る",
     "Return vector embeddings for inputs": "入力に対してベクトル埋め込みを返却",
     "Reveal API key": "APIキーを表示",

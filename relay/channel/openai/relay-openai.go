@@ -25,6 +25,12 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		return nil
 	}
 
+	responseData, err := relaycommon.RewriteResponseModel(common.StringToByteSlice(data), info, "model")
+	if err != nil {
+		return err
+	}
+	data = string(responseData)
+
 	if !forceFormat && !thinkToContent {
 		return helper.StringData(c, data)
 	}
@@ -168,6 +174,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
 		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
 	}
+	model = info.ExposeResponseModelName(model)
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
 		if shouldSendLastResp {
@@ -291,6 +298,12 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 		}
 		responseBody = geminiRespStr
+	}
+	if info.RelayFormat == types.RelayFormatOpenAI {
+		responseBody, err = relaycommon.RewriteResponseModel(responseBody, info, "model")
+		if err != nil {
+			return nil, types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+		}
 	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)

@@ -52,6 +52,7 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	if chatID := helper.GetResponseID(c); chatID != "" {
 		chatResp.Id = chatID
 	}
+	chatResp.Model = info.ExposeResponseModelName(chatResp.Model)
 	usage := chatResult.Usage
 
 	if usage == nil || usage.TotalTokens == 0 {
@@ -144,7 +145,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 		finalResponse = &dto.OpenAIResponsesResponse{
 			ID:        helper.GetResponseID(c),
 			CreatedAt: int(time.Now().Unix()),
-			Model:     info.UpstreamModelName,
+			Model:     info.ResponseModelName(),
 			Status:    []byte(`"completed"`),
 		}
 	}
@@ -161,6 +162,7 @@ func OaiResponsesToChatBufferedStreamHandler(c *gin.Context, info *relaycommon.R
 	if chatID := helper.GetResponseID(c); chatID != "" {
 		chatResp.Id = chatID
 	}
+	chatResp.Model = info.ExposeResponseModelName(chatResp.Model)
 	usage := chatResult.Usage
 	if usage == nil || usage.TotalTokens == 0 {
 		text := service.ExtractOutputTextFromResponses(finalResponse)
@@ -196,7 +198,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	createAt := time.Now().Unix()
 	state, err := relayconvert.NewResponseStreamState(types.RelayFormatOpenAIResponses, info.RelayFormat, relayconvert.ResponseStreamOptions{
 		ID:      responseId,
-		Model:   info.UpstreamModelName,
+		Model:   info.ResponseModelName(),
 		Created: createAt,
 	})
 	if err != nil {
@@ -330,7 +332,7 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 	if info.RelayFormat == types.RelayFormatOpenAI && info.ShouldIncludeUsage && usage != nil {
-		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseId, createAt, info.UpstreamModelName, *usage)); err != nil {
+		if err := helper.ObjectData(c, helper.GenerateFinalUsageResponse(responseId, createAt, info.ResponseModelName(), *usage)); err != nil {
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}
 	}

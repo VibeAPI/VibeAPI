@@ -92,8 +92,43 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      - name: Get GitHub OIDC token
+        shell: bash
+        run: |
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "::error::GitHub did not provide OIDC credentials. Ensure this job has 'id-token: write' permission."
+            exit 1
+          fi
+
+          oidc_response="$(mktemp)"
+          trap 'rm -f "$oidc_response"' EXIT
+
+          for attempt in 1 2 3; do
+            http_status="$(
+              curl --silent --show-error \
+                --header "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                --output "$oidc_response" \
+                --write-out '%{http_code}' \
+                "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore"
+            )" || http_status="request-error"
+
+            if [[ "$http_status" == "200" ]] && OIDC_TOKEN="$(jq --raw-output --exit-status '.value | select(type == "string" and length > 0)' "$oidc_response" 2>/dev/null)"; then
+              echo "::add-mask::${OIDC_TOKEN}"
+              echo "OIDC_TOKEN=${OIDC_TOKEN}" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            echo "OIDC token request failed (attempt ${attempt}/3, HTTP ${http_status:-unknown})." >&2
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep "$((attempt * 2))"
+            fi
+          done
+
+          echo "::error::Unable to retrieve a valid GitHub OIDC token after 3 attempts. Check the job's effective 'id-token: write' permission and GitHub Actions OIDC availability."
+          exit 1
+
       - name: Sign image with cosign
-        run: cosign sign --yes heself/vibeapi@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes --identity-token "${OIDC_TOKEN}" heself/vibeapi@${{ steps.build.outputs.digest }}
 
       - name: Image summary
         run: |
@@ -137,12 +172,47 @@ jobs:
             heself/vibeapi:latest-arm64
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Get GitHub OIDC token
+        shell: bash
+        run: |
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+            echo "::error::GitHub did not provide OIDC credentials. Ensure this job has 'id-token: write' permission."
+            exit 1
+          fi
+
+          oidc_response="$(mktemp)"
+          trap 'rm -f "$oidc_response"' EXIT
+
+          for attempt in 1 2 3; do
+            http_status="$(
+              curl --silent --show-error \
+                --header "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+                --output "$oidc_response" \
+                --write-out '%{http_code}' \
+                "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore"
+            )" || http_status="request-error"
+
+            if [[ "$http_status" == "200" ]] && OIDC_TOKEN="$(jq --raw-output --exit-status '.value | select(type == "string" and length > 0)' "$oidc_response" 2>/dev/null)"; then
+              echo "::add-mask::${OIDC_TOKEN}"
+              echo "OIDC_TOKEN=${OIDC_TOKEN}" >> "$GITHUB_ENV"
+              exit 0
+            fi
+
+            echo "OIDC token request failed (attempt ${attempt}/3, HTTP ${http_status:-unknown})." >&2
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep "$((attempt * 2))"
+            fi
+          done
+
+          echo "::error::Unable to retrieve a valid GitHub OIDC token after 3 attempts. Check the job's effective 'id-token: write' permission and GitHub Actions OIDC availability."
+          exit 1
 
       - name: Sign manifests with cosign
         run: |
-          cosign sign --yes heself/vibeapi:${TAG}
-          cosign sign --yes heself/vibeapi:latest
+          cosign sign --yes --identity-token "${OIDC_TOKEN}" heself/vibeapi:${TAG}
+          cosign sign --yes --identity-token "${OIDC_TOKEN}" heself/vibeapi:latest
 
       - name: Manifest summary
         run: |

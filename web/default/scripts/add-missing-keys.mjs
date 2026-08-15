@@ -936,6 +936,50 @@ for (const [locale, translations] of Object.entries(topupExportTranslations)) {
   Object.assign(newKeys[locale], translations)
 }
 
+const responseModelNameTranslations = {
+  en: {
+    'Return requested model name': 'Return requested model name',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      'Return the model name requested by the client instead of the mapped upstream model name',
+  },
+  zh: {
+    'Return requested model name': '返回请求模型名称',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      '向客户端返回其请求的模型名称，而不是映射后的上游模型名称',
+  },
+  'zh-TW': {
+    'Return requested model name': '回傳請求模型名稱',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      '向客戶端回傳其請求的模型名稱，而不是映射後的上游模型名稱',
+  },
+  fr: {
+    'Return requested model name': 'Renvoyer le nom du modèle demandé',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      'Renvoyer au client le nom du modèle demandé au lieu du nom du modèle amont mappé',
+  },
+  ja: {
+    'Return requested model name': '要求されたモデル名を返す',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      'マッピング後の上流モデル名ではなく、クライアントが要求したモデル名を返します',
+  },
+  ru: {
+    'Return requested model name': 'Возвращать запрошенное имя модели',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      'Возвращать клиенту запрошенное имя модели вместо сопоставленного имени вышестоящей модели',
+  },
+  vi: {
+    'Return requested model name': 'Trả về tên mô hình đã yêu cầu',
+    'Return the model name requested by the client instead of the mapped upstream model name':
+      'Trả về cho máy khách tên mô hình đã yêu cầu thay vì tên mô hình thượng nguồn sau ánh xạ',
+  },
+}
+
+for (const [locale, translations] of Object.entries(
+  responseModelNameTranslations
+)) {
+  Object.assign(newKeys[locale], translations)
+}
+
 async function main() {
   let totalApplied = 0
 

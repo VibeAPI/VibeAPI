@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "返回符合 JSON Schema 的数据",
     "Return Error": "返回错误",
     "Return per-token log probabilities": "返回每个 token 的对数概率",
+    "Return requested model name": "返回请求模型名称",
+    "Return the model name requested by the client instead of the mapped upstream model name": "向客户端返回其请求的模型名称，而不是映射后的上游模型名称",
     "Return to dashboard": "返回仪表盘",
     "Return vector embeddings for inputs": "为输入返回向量嵌入",
     "Reveal API key": "显示 API 密钥",

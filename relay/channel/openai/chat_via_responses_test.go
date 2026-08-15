@@ -29,13 +29,32 @@ func newResponsesChatTestContext(t *testing.T, body string, isStream bool) (*gin
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 	}
 	info := &relaycommon.RelayInfo{
-		ChannelMeta:        &relaycommon.ChannelMeta{UpstreamModelName: "gpt-test"},
+		OriginModelName: "gpt-public",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gpt-test",
+		},
 		IsStream:           isStream,
 		RelayFormat:        types.RelayFormatOpenAI,
 		ShouldIncludeUsage: true,
 		DisablePing:        true,
 	}
 	return c, recorder, resp, info
+}
+
+func TestOaiResponsesToChatHandlerReturnsRequestedModelNameWhenEnabled(t *testing.T) {
+	oldMode := gin.Mode()
+	gin.SetMode(gin.TestMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+
+	body := `{"id":"resp_1","object":"response","created_at":1710000000,"status":"completed","model":"gpt-upstream-versioned","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"hello","annotations":[]}]}],"usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}`
+	c, recorder, resp, info := newResponsesChatTestContext(t, body, false)
+	info.ChannelSetting.ReturnRequestModelName = true
+
+	usage, err := OaiResponsesToChatHandler(c, info, resp)
+	require.Nil(t, err)
+	require.NotNil(t, usage)
+	require.Contains(t, recorder.Body.String(), `"model":"gpt-public"`)
+	require.NotContains(t, recorder.Body.String(), `gpt-upstream-versioned`)
 }
 
 func TestOaiResponsesToChatStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {

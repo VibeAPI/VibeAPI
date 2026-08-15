@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "Возвращать данные, соответствующие JSON-схеме",
     "Return Error": "Вернуть ошибку",
     "Return per-token log probabilities": "Возвращать логарифмические вероятности по токенам",
+    "Return requested model name": "Возвращать запрошенное имя модели",
+    "Return the model name requested by the client instead of the mapped upstream model name": "Возвращать клиенту запрошенное имя модели вместо сопоставленного имени вышестоящей модели",
     "Return to dashboard": "Вернуться на панель управления",
     "Return vector embeddings for inputs": "Возвращать векторные эмбеддинги для входных данных",
     "Reveal API key": "Показать API ключ",

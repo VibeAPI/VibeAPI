@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "Return data conforming to a JSON schema",
     "Return Error": "Return Error",
     "Return per-token log probabilities": "Return per-token log probabilities",
+    "Return requested model name": "Return requested model name",
+    "Return the model name requested by the client instead of the mapped upstream model name": "Return the model name requested by the client instead of the mapped upstream model name",
     "Return to dashboard": "Return to dashboard",
     "Return vector embeddings for inputs": "Return vector embeddings for inputs",
     "Reveal API key": "Reveal API key",

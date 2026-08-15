@@ -3972,6 +3972,8 @@
     "Return data conforming to a JSON schema": "Trả về dữ liệu tuân theo JSON Schema",
     "Return Error": "Trả về lỗi",
     "Return per-token log probabilities": "Trả về log probabilities cho từng token",
+    "Return requested model name": "Trả về tên mô hình đã yêu cầu",
+    "Return the model name requested by the client instead of the mapped upstream model name": "Trả về cho máy khách tên mô hình đã yêu cầu thay vì tên mô hình thượng nguồn sau ánh xạ",
     "Return to dashboard": "Quay lại bảng điều khiển",
     "Return vector embeddings for inputs": "Trả về vector embedding cho đầu vào",
     "Reveal API key": "Hiển thị khóa API",
