@@ -54,10 +54,6 @@ func ExportTopupLogs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid time range"})
 		return
 	}
-	if common.QuotaPerUnit <= 0 {
-		c.JSON(http.StatusInternalServerError, gin.H{"message": "invalid quota conversion configuration"})
-		return
-	}
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
 	logs, err := model.GetTopupLogsForExport(startTimestamp, endTimestamp, excludeAdmins)
 	if err != nil {
@@ -80,18 +76,14 @@ func ExportTopupLogs(c *gin.Context) {
 		if log == nil || log.Username == "" {
 			continue
 		}
-		quota, ok := model.GetTopupQuota(log)
+		amount, ok := model.GetTopupPaymentAmount(log)
 		if !ok {
 			continue
 		}
-		amount := decimal.NewFromInt(int64(quota)).
-			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
-			Mul(decimal.NewFromFloat(operation_setting.GetUsdToCurrencyRate(operation_setting.USDExchangeRate))).
-			Round(6).
-			String()
+		amountText := decimal.NewFromFloat(amount).Round(6).String()
 		date := time.Unix(log.CreatedAt, 0).In(time.Local).Format("2006/01/02")
 		username := usernameSanitizer.Replace(log.Username)
-		fmt.Fprintf(&export, "%s\t%s%s\t%s\n", username, currencySymbol, amount, date)
+		fmt.Fprintf(&export, "%s %s%s %s\n", username, currencySymbol, amountText, date)
 	}
 
 	filename := "topup-records-" + time.Now().Format("20060102-150405") + ".txt"

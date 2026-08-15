@@ -118,6 +118,7 @@ export interface LogOtherData {
     // Top-up audit fields (type=1, admin only)
     payment_method?: string
     callback_payment_method?: string
+    payment_amount?: number
     caller_ip?: string
     server_ip?: string
     version?: string
@@ -137,6 +138,7 @@ export interface LogOtherData {
       clamped: number
     }
   }
+  payment_amount?: number
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.
   op?: {

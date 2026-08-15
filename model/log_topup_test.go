@@ -89,3 +89,76 @@ func TestGetTopupQuotaSupportsStructuredAndLegacyLogs(t *testing.T) {
 		})
 	}
 }
+
+func TestGetTopupPaymentAmountSupportsStructuredAndLegacyLogs(t *testing.T) {
+	testCases := []struct {
+		name     string
+		log      *Log
+		expected float64
+		ok       bool
+	}{
+		{
+			name: "structured top-up payment amount",
+			log: &Log{
+				Type:    LogTypeTopup,
+				Content: "completed",
+				Other:   `{"payment_amount":80}`,
+			},
+			expected: 80,
+			ok:       true,
+		},
+		{
+			name: "admin info payment amount",
+			log: &Log{
+				Type:    LogTypeTopup,
+				Content: "completed",
+				Other:   `{"admin_info":{"payment_amount":88.5}}`,
+			},
+			expected: 88.5,
+			ok:       true,
+		},
+		{
+			name:     "legacy payment amount",
+			log:      &Log{Type: LogTypeTopup, Content: "使用在线充值成功，充值金额: ¥100.000000 额度，支付金额：80.000000"},
+			expected: 80,
+			ok:       true,
+		},
+		{
+			name: "structured value wins over legacy content",
+			log: &Log{
+				Type:    LogTypeTopup,
+				Content: "使用在线充值成功，支付金额：100.000000",
+				Other:   `{"payment_amount":80}`,
+			},
+			expected: 80,
+			ok:       true,
+		},
+		{
+			name: "pending corporate order is excluded",
+			log:  &Log{Type: LogTypeTopup, Content: "提交对公支付订单，订单号：123，支付金额：70.00"},
+			ok:   false,
+		},
+		{
+			name: "subscription purchase is excluded",
+			log:  &Log{Type: LogTypeTopup, Content: "订阅购买成功，套餐: Pro，支付金额: 10.00"},
+			ok:   false,
+		},
+		{
+			name: "redemption without payment is excluded",
+			log:  &Log{Type: LogTypeTopup, Content: "通过兑换码充值 $10"},
+			ok:   false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			amount, ok := GetTopupPaymentAmount(testCase.log)
+			if !testCase.ok {
+				assert.False(t, ok)
+				return
+			}
+			require.True(t, ok)
+			assert.Equal(t, testCase.expected, amount)
+		})
+	}
+}

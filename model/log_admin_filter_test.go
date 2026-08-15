@@ -99,7 +99,7 @@ func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
 
 	logs := []*Log{
 		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 100, Quota: 500_000},
-		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 200, Quota: 1_000_000},
+		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 200, Quota: 1_000_000, Content: "充值成功，支付金额：1.60"},
 		{UserId: users[1].Id, Username: users[1].Username, Type: LogTypeTopup, CreatedAt: 250, Quota: 1_500_000},
 		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeConsume, CreatedAt: 275, Quota: 1},
 		{UserId: users[0].Id, Username: users[0].Username, Type: LogTypeTopup, CreatedAt: 300, Quota: 2_000_000},
@@ -112,4 +112,8 @@ func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
 	assert.Equal(t, users[0].Username, exported[0].Username)
 	assert.Equal(t, int64(200), exported[0].CreatedAt)
 	assert.Equal(t, 1_000_000, exported[0].Quota)
+	assert.Equal(t, LogTypeTopup, exported[0].Type)
+	amount, ok := GetTopupPaymentAmount(exported[0])
+	require.True(t, ok)
+	assert.Equal(t, 1.6, amount)
 }

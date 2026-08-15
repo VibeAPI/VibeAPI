@@ -243,7 +243,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	creditedQuota := common.QuotaFromFloat(quota)
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(creditedQuota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe, creditedQuota)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%.2f", logger.FormatQuota(creditedQuota), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodStripe, creditedQuota)
 
 	return nil
 }
