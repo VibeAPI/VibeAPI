@@ -980,6 +980,78 @@ for (const [locale, translations] of Object.entries(
   Object.assign(newKeys[locale], translations)
 }
 
+const channelUserBlacklistTranslations = {
+  en: {
+    'Channel user blacklist': 'Channel user blacklist',
+    'Enter user IDs separated by commas or new lines':
+      'Enter user IDs separated by commas or new lines',
+    'Requests from these users skip this channel and continue with the next available priority':
+      'Requests from these users skip this channel and continue with the next available priority',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      'Enter up to 1000 unique positive user IDs, separated by commas or new lines',
+  },
+  zh: {
+    'Channel user blacklist': '渠道用户黑名单',
+    'Enter user IDs separated by commas or new lines':
+      '输入用户 ID，使用逗号或换行分隔',
+    'Requests from these users skip this channel and continue with the next available priority':
+      '这些用户的请求将跳过此渠道，并继续选择下一可用优先级',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      '最多输入 1000 个不重复的正整数用户 ID，使用逗号或换行分隔',
+  },
+  'zh-TW': {
+    'Channel user blacklist': '渠道使用者黑名單',
+    'Enter user IDs separated by commas or new lines':
+      '輸入使用者 ID，使用逗號或換行分隔',
+    'Requests from these users skip this channel and continue with the next available priority':
+      '這些使用者的請求將略過此渠道，並繼續選擇下一個可用優先級',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      '最多輸入 1000 個不重複的正整數使用者 ID，使用逗號或換行分隔',
+  },
+  fr: {
+    'Channel user blacklist': 'Liste noire des utilisateurs du canal',
+    'Enter user IDs separated by commas or new lines':
+      'Saisissez les ID utilisateur séparés par des virgules ou des lignes',
+    'Requests from these users skip this channel and continue with the next available priority':
+      'Les requêtes de ces utilisateurs ignorent ce canal et passent à la priorité disponible suivante',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      'Saisissez jusqu’à 1000 ID utilisateur positifs et uniques, séparés par des virgules ou des lignes',
+  },
+  ja: {
+    'Channel user blacklist': 'チャネルのユーザーブラックリスト',
+    'Enter user IDs separated by commas or new lines':
+      'ユーザー ID をカンマまたは改行で区切って入力',
+    'Requests from these users skip this channel and continue with the next available priority':
+      'これらのユーザーからのリクエストはこのチャネルをスキップし、次に利用可能な優先度へ進みます',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      '重複しない正のユーザー ID を最大 1000 件、カンマまたは改行で区切って入力してください',
+  },
+  ru: {
+    'Channel user blacklist': 'Чёрный список пользователей канала',
+    'Enter user IDs separated by commas or new lines':
+      'Введите ID пользователей через запятую или с новой строки',
+    'Requests from these users skip this channel and continue with the next available priority':
+      'Запросы этих пользователей пропускают этот канал и переходят к следующему доступному приоритету',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      'Введите до 1000 уникальных положительных ID пользователей через запятую или с новой строки',
+  },
+  vi: {
+    'Channel user blacklist': 'Danh sách đen người dùng của kênh',
+    'Enter user IDs separated by commas or new lines':
+      'Nhập ID người dùng, phân tách bằng dấu phẩy hoặc dòng mới',
+    'Requests from these users skip this channel and continue with the next available priority':
+      'Yêu cầu từ những người dùng này sẽ bỏ qua kênh và chuyển đến mức ưu tiên khả dụng tiếp theo',
+    'Enter up to 1000 unique positive user IDs, separated by commas or new lines':
+      'Nhập tối đa 1000 ID người dùng dương, không trùng lặp, phân tách bằng dấu phẩy hoặc dòng mới',
+  },
+}
+
+for (const [locale, translations] of Object.entries(
+  channelUserBlacklistTranslations
+)) {
+  Object.assign(newKeys[locale], translations)
+}
+
 async function main() {
   let totalApplied = 0
 

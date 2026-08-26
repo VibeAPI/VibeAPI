@@ -957,6 +957,9 @@ func (channel *Channel) ValidateSettings() error {
 			return fmt.Errorf("advanced_custom is required")
 		}
 	}
+	if err := channelOtherSettings.ValidateBlacklistUserIds(); err != nil {
+		return err
+	}
 	if channelOtherSettings.AdvancedCustom != nil {
 		if err := channelOtherSettings.AdvancedCustom.Validate(); err != nil {
 			return err

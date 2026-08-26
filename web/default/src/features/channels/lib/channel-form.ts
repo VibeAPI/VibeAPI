@@ -116,6 +116,22 @@ function isVertexJsonKey(value: string | undefined): boolean {
   }
 }
 
+function parseBlacklistUserIds(value: string | undefined): number[] | null {
+  const parts = String(value || '')
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const ids = parts.map(Number)
+  if (
+    ids.length > 1000 ||
+    ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
+    new Set(ids).size !== ids.length
+  ) {
+    return null
+  }
+  return ids
+}
+
 function addRequiredIssue(
   ctx: z.RefinementCtx,
   path: string,
@@ -148,6 +164,7 @@ export const channelFormSchema = z
     weight: z.number().optional(),
     test_model: z.string().optional(),
     auto_ban: z.number().optional(),
+    blacklist_user_ids: z.string().optional(),
     status: z.number(),
     status_code_mapping: z
       .string()
@@ -212,6 +229,13 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (parseBlacklistUserIds(data.blacklist_user_ids) === null) {
+      addRequiredIssue(
+        ctx,
+        'blacklist_user_ids',
+        'Enter up to 1000 unique positive user IDs, separated by commas or new lines'
+      )
+    }
     if ([3, 8, 36, 45].includes(data.type) && !data.base_url?.trim()) {
       addRequiredIssue(
         ctx,
@@ -312,6 +336,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   weight: 0,
   test_model: '',
   auto_ban: 1,
+  blacklist_user_ids: '',
   status: CHANNEL_STATUS.ENABLED,
   status_code_mapping: '',
   tag: '',
@@ -382,8 +407,7 @@ export function transformChannelToFormDefaults(
         thinking_to_content: parsed.thinking_to_content || false,
         proxy: parsed.proxy || '',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
-        return_request_model_name:
-          parsed.return_request_model_name === true,
+        return_request_model_name: parsed.return_request_model_name === true,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
       }
@@ -410,6 +434,7 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
+  let blacklistUserIds = ''
 
   if (channel.settings) {
     try {
@@ -426,6 +451,9 @@ export function transformChannelToFormDefaults(
       allowSpeed = parsed.allow_speed === true
       claudeBetaQuery = parsed.claude_beta_query === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
+      blacklistUserIds = Array.isArray(parsed.blacklist_user_ids)
+        ? parsed.blacklist_user_ids.join(', ')
+        : ''
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
@@ -457,6 +485,7 @@ export function transformChannelToFormDefaults(
     weight: channel.weight || 0,
     test_model: channel.test_model || '',
     auto_ban: channel.auto_ban ?? 1,
+    blacklist_user_ids: blacklistUserIds,
     status: channel.status,
     status_code_mapping: channel.status_code_mapping || '',
     tag: channel.tag || '',
@@ -522,6 +551,13 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
       // eslint-disable-next-line no-console
       console.error('Failed to parse existing settings:', error)
     }
+  }
+
+  const blacklistUserIds = parseBlacklistUserIds(formData.blacklist_user_ids)
+  if (blacklistUserIds && blacklistUserIds.length > 0) {
+    settingsObj.blacklist_user_ids = blacklistUserIds
+  } else {
+    delete settingsObj.blacklist_user_ids
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)

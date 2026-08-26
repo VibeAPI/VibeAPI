@@ -53,7 +53,13 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 				return
 			}
-		} else {
+			if channel.GetOtherSettings().IsUserBlacklisted(common.GetContextKeyInt(c, constant.ContextKeyUserId)) {
+				channel = nil
+				ok = false
+				c.Set(string(constant.ContextKeyTokenSpecificChannelId), nil)
+			}
+		}
+		if !ok {
 			// Select a channel for the user
 			// check token model mapping
 			modelLimitEnable := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
@@ -105,6 +111,7 @@ func Distribute() func(c *gin.Context) {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled &&
+						!preferred.GetOtherSettings().IsUserBlacklisted(common.GetContextKeyInt(c, constant.ContextKeyUserId)) &&
 						channelSupportsRequestPath(preferred, c.Request.URL.Path, modelRequest.Model) {
 						if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)

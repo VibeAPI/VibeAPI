@@ -90,6 +90,7 @@ export interface ChannelSettings {
 }
 
 export interface ChannelOtherSettings {
+  blacklist_user_ids?: number[]
   azure_responses_version?: string
   vertex_key_type?: 'json' | 'api_key'
   openrouter_enterprise?: boolean
@@ -351,6 +352,7 @@ export interface ChannelFormData {
   weight?: number
   test_model?: string
   auto_ban?: number
+  blacklist_user_ids?: string
   status: number
   status_code_mapping?: string
   tag?: string

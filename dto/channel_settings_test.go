@@ -389,3 +389,30 @@ func TestAdvancedCustomSupportedEndpointTypesForModel(t *testing.T) {
 		constant.EndpointTypeAnthropic,
 	}, config.SupportedEndpointTypesForModel("other-model"))
 }
+
+func TestChannelOtherSettingsUserBlacklist(t *testing.T) {
+	settings := &ChannelOtherSettings{BlacklistUserIds: []int{12, 34}}
+
+	assert.True(t, settings.IsUserBlacklisted(12))
+	assert.False(t, settings.IsUserBlacklisted(56))
+	assert.False(t, settings.IsUserBlacklisted(0))
+	require.NoError(t, settings.ValidateBlacklistUserIds())
+}
+
+func TestChannelOtherSettingsRejectsInvalidUserBlacklist(t *testing.T) {
+	tests := []struct {
+		name string
+		ids  []int
+	}{
+		{name: "non-positive", ids: []int{0}},
+		{name: "duplicate", ids: []int{12, 12}},
+		{name: "too many", ids: make([]int, MaxChannelBlacklistUserIds+1)},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			settings := &ChannelOtherSettings{BlacklistUserIds: test.ids}
+			assert.Error(t, settings.ValidateBlacklistUserIds())
+		})
+	}
+}
