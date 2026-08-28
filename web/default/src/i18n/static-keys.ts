@@ -44,6 +44,7 @@ export const STATIC_I18N_KEYS = [
   'Models',
   'Routing Reliability',
   'Maintenance',
+  'Prompt Audit',
 
   // System info
   'online',

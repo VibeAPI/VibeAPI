@@ -94,7 +94,8 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "api_key") ||
 			strings.Contains(lowerKey, "private_key") ||
 			strings.Contains(lowerKey, "api_v3_key") ||
-			k == "upstream_balance_setting.accounts"
+			k == "upstream_balance_setting.accounts" ||
+			strings.HasPrefix(k, "prompt_audit_setting.")
 		if isSensitiveKey {
 			continue
 		}
@@ -136,7 +137,7 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
-	if strings.HasPrefix(option.Key, "upstream_balance_setting.") {
+	if strings.HasPrefix(option.Key, "upstream_balance_setting.") || strings.HasPrefix(option.Key, "prompt_audit_setting.") {
 		c.JSON(http.StatusForbidden, gin.H{
 			"success": false,
 			"message": "Use the dedicated upstream balance settings endpoint",

@@ -108,6 +108,10 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 }
 
 func GetChannel(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+	return getChannelFiltered(group, model, retry, requestPath, userId, nil)
+}
+
+func getChannelFiltered(group string, model string, retry int, requestPath string, userId int, allow func(int, int64) bool) (*Channel, error) {
 	var abilities []Ability
 
 	err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
@@ -134,6 +138,19 @@ func GetChannel(group string, model string, retry int, requestPath string, userI
 				return nil, err
 			}
 		}
+	}
+	if allow != nil {
+		filtered := make([]Ability, 0, len(abilities))
+		for _, ability := range abilities {
+			priority := int64(0)
+			if ability.Priority != nil {
+				priority = *ability.Priority
+			}
+			if allow(ability.ChannelId, priority) {
+				filtered = append(filtered, ability)
+			}
+		}
+		abilities = filtered
 	}
 	if len(abilities) == 0 {
 		return nil, nil
@@ -192,6 +209,16 @@ func GetChannel(group string, model string, retry int, requestPath string, userI
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
+}
+
+func GetUnprotectedChannel(group string, model string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
+	return getChannelFiltered(group, model, 0, requestPath, userId, func(channelId int, priority int64) bool {
+		if priority > maxPriority {
+			return false
+		}
+		_, blocked := protected[channelId]
+		return !blocked
+	})
 }
 
 func filterAbilitiesByUser(abilities []Ability, userId int) ([]Ability, error) {

@@ -208,6 +208,14 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.GET("/waffo-pancake/subscription-product-options", controller.ListWaffoPancakeSubscriptionProductOptions)
 			optionRoute.GET("/upstream-balances", controller.GetUpstreamBalanceSettings)
 			optionRoute.PUT("/upstream-balances", controller.SaveUpstreamBalanceSettings)
+			optionRoute.GET("/prompt-audit", controller.GetPromptAuditSettings)
+			optionRoute.PUT("/prompt-audit", controller.SavePromptAuditSettings)
+			optionRoute.POST("/prompt-audit/test", controller.TestPromptAuditSettings)
+			optionRoute.POST("/prompt-audit/enable", controller.EnablePromptAudit)
+			optionRoute.POST("/prompt-audit/disable", controller.DisablePromptAudit)
+			optionRoute.GET("/prompt-audit/events", controller.ListPromptAuditEvents)
+			optionRoute.POST("/prompt-audit/restriction/clear", controller.ClearPromptAuditUserRestriction)
+			optionRoute.POST("/prompt-audit/events/:event_id/resend-email", controller.ResendPromptAuditEmail)
 		}
 
 		upstreamBalanceRoute := apiRouter.Group("/upstream-balances")

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -123,6 +124,18 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	initialChannel, auditErr := applyPromptAudit(c, relayInfo, request, nil)
+	if auditErr != nil {
+		newAPIError = auditErr
+		return
+	}
+	if initialChannel != nil {
+		if setupErr := middleware.SetupContextForSelectedChannel(c, initialChannel, relayInfo.OriginModelName); setupErr != nil {
+			newAPIError = setupErr
+			return
+		}
+	}
+
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.
@@ -193,6 +206,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
+			newAPIError = channelErr
+			break
+		}
+		channel, channelErr = applyPromptAudit(c, relayInfo, request, channel)
+		if channelErr != nil {
 			newAPIError = channelErr
 			break
 		}
@@ -304,6 +322,24 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			AutoBan: &autoBanInt,
 		}, nil
 	}
+	if c.GetBool("prompt_audit_force_fallback") {
+		setting := service.SnapshotPromptAuditSetting()
+		selectGroup := common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+		if selectGroup == "" {
+			selectGroup = retryParam.TokenGroup
+		}
+		channel, err := service.SelectPromptAuditFallback(selectGroup, retryParam.ModelName, retryParam.RequestPath, common.GetContextKeyInt(c, constant.ContextKeyUserId), c.GetInt64("prompt_audit_max_priority"), service.PromptAuditProtectedChannels(setting))
+		if err != nil || channel == nil {
+			if err == nil {
+				err = errors.New("no unprotected channel is available")
+			}
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+		}
+		if setupErr := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName); setupErr != nil {
+			return nil, setupErr
+		}
+		return channel, nil
+	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
@@ -320,6 +356,170 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, newAPIError
 	}
 	return channel, nil
+}
+
+func applyPromptAudit(c *gin.Context, relayInfo *relaycommon.RelayInfo, request dto.Request, selected *model.Channel) (*model.Channel, *types.NewAPIError) {
+	setting := service.SnapshotPromptAuditSetting()
+	if !setting.Enabled || !service.ShouldPromptAuditUser(setting, relayInfo.UserId) {
+		return selected, nil
+	}
+	channel := selected
+	if channel == nil {
+		var err error
+		channel, err = model.CacheGetChannel(c.GetInt("channel_id"))
+		if err != nil {
+			return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeGetChannelFailed, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+		}
+	}
+	if !service.IsPromptAuditChannelProtected(setting, channel.Id) {
+		return channel, nil
+	}
+	if c.GetBool("prompt_audit_checked") {
+		return channel, nil
+	}
+
+	state, err := model.GetPromptAuditUserState(relayInfo.UserId)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	content, truncated := service.ExtractPromptAuditContent(request, setting)
+	if content == "" {
+		c.Set("prompt_audit_checked", true)
+		return channel, nil
+	}
+	restricted := service.PromptAuditStateRequiresFallback(setting, state, time.Now().Unix())
+	if restricted && (state.PendingEventId != "" || setting.Mode == operation_setting.PromptAuditModeDowngrade) {
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+
+	fingerprint := model.PromptAuditFingerprint(relayInfo.UserId, content, setting.Version)
+	recent, err := model.FindRecentPromptAuditEvent(relayInfo.UserId, fingerprint, setting.Version, time.Now().Add(-time.Duration(setting.DedupeMinutes)*time.Minute).Unix())
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	if recent != nil {
+		if recent.Status == model.PromptAuditEventPending {
+			if setting.Mode == operation_setting.PromptAuditModeDowngrade {
+				return selectPromptAuditFallback(c, relayInfo, setting, channel)
+			}
+			waitCtx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(setting.ReviewTotalTimeoutSeconds)*time.Second)
+			defer cancel()
+			recent, err = service.WaitPromptAuditEvent(waitCtx, recent.EventId)
+			if err != nil {
+				return nil, types.NewErrorWithStatusCode(errors.New("prompt audit review timed out"), types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+			}
+		}
+		if recent.Status == model.PromptAuditEventViolation {
+			if setting.Mode == operation_setting.PromptAuditModeReject {
+				return nil, promptAuditRejectedError(setting, recent.EventId)
+			}
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		if recent.Status == model.PromptAuditEventFailed {
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		if restricted {
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		c.Set("prompt_audit_checked", true)
+		return channel, nil
+	}
+
+	decision, duration, err := service.RunPromptAuditMain(c.Request.Context(), setting, content)
+	if err != nil {
+		if eventID := service.MarkPromptAuditTechnicalFailure(c, setting, content, truncated, channel.Id, duration, err); eventID != "" {
+			c.Set("prompt_audit_event_id", eventID)
+		}
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+	if !decision.Flagged || decision.Confidence < setting.MainThreshold {
+		eventID, recordErr := service.RecordPromptAuditMainSafe(c, setting, content, truncated, decision, channel.Id, duration)
+		if recordErr != nil {
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		c.Set("prompt_audit_event_id", eventID)
+		if restricted {
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		c.Set("prompt_audit_checked", true)
+		return channel, nil
+	}
+	if !setting.ReviewEnabled {
+		eventID, recordErr := service.RecordPromptAuditMainViolation(c, setting, content, truncated, decision, channel.Id, duration)
+		if recordErr != nil {
+			return selectPromptAuditFallback(c, relayInfo, setting, channel)
+		}
+		c.Set("prompt_audit_event_id", eventID)
+		if setting.Mode == operation_setting.PromptAuditModeReject {
+			return nil, promptAuditRejectedError(setting, eventID)
+		}
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+	event, err := service.CreatePromptAuditEvent(c, setting, content, truncated, decision, channel.Id, duration)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	c.Set("prompt_audit_event_id", event.EventId)
+	outcome := service.PromptAuditOutcome{EventId: event.EventId, Decision: decision, Event: event, Setting: setting, Content: content}
+	if setting.Mode == operation_setting.PromptAuditModeDowngrade {
+		go func() {
+			if _, reviewErr := service.FinishPromptAuditReviews(context.Background(), outcome); reviewErr != nil {
+				common.SysError("prompt audit review failed: " + reviewErr.Error())
+			}
+		}()
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+	confirmed, err := service.FinishPromptAuditReviews(c.Request.Context(), outcome)
+	if err != nil {
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	if confirmed {
+		return nil, promptAuditRejectedError(setting, event.EventId)
+	}
+	finishedEvent, finishErr := model.GetPromptAuditEvent(event.EventId)
+	if finishErr != nil {
+		return nil, types.NewErrorWithStatusCode(finishErr, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	if finishedEvent.Status == model.PromptAuditEventFailed {
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+	if restricted {
+		return selectPromptAuditFallback(c, relayInfo, setting, channel)
+	}
+	c.Set("prompt_audit_checked", true)
+	return channel, nil
+}
+
+func selectPromptAuditFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, setting operation_setting.PromptAuditSetting, origin *model.Channel) (*model.Channel, *types.NewAPIError) {
+	selectGroup := common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
+	if selectGroup == "" {
+		selectGroup = relayInfo.TokenGroup
+	}
+	channel, err := service.SelectPromptAuditFallback(selectGroup, relayInfo.OriginModelName, c.Request.URL.Path, relayInfo.UserId, origin.GetPriority(), service.PromptAuditProtectedChannels(setting))
+	if err != nil || channel == nil {
+		if err == nil {
+			err = errors.New("no unprotected channel is available")
+		}
+		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	c.Set("prompt_audit_checked", true)
+	c.Set("prompt_audit_force_fallback", true)
+	c.Set("prompt_audit_max_priority", origin.GetPriority())
+	if eventID := c.GetString("prompt_audit_event_id"); eventID != "" {
+		_ = model.UpdatePromptAuditEventFinalChannel(eventID, channel.Id)
+	}
+	if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+		return nil, setupErr
+	}
+	return channel, nil
+}
+
+func promptAuditRejectedError(setting operation_setting.PromptAuditSetting, eventId string) *types.NewAPIError {
+	message := strings.TrimSpace(setting.RejectMessage)
+	if message == "" {
+		message = "Your request was blocked by the content policy."
+	}
+	return types.NewErrorWithStatusCode(fmt.Errorf("%s Event ID: %s", message, eventId), types.ErrorCodeContentPolicyViolation, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
@@ -499,6 +699,26 @@ func RelayTask(c *gin.Context) {
 		return
 	}
 
+	var auditTaskRequest relaycommon.TaskSubmitReq
+	if err := common.UnmarshalBodyReusable(c, &auditTaskRequest); err != nil {
+		respondTaskError(c, service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest))
+		return
+	}
+	if strings.TrimSpace(auditTaskRequest.Prompt) != "" {
+		auditRequest := &dto.ImageRequest{Prompt: auditTaskRequest.Prompt, Model: relayInfo.OriginModelName}
+		initialChannel, auditErr := applyPromptAudit(c, relayInfo, auditRequest, nil)
+		if auditErr != nil {
+			respondTaskError(c, service.TaskErrorWrapperLocal(auditErr.Err, string(auditErr.GetErrorCode()), auditErr.StatusCode))
+			return
+		}
+		if initialChannel != nil {
+			if setupErr := middleware.SetupContextForSelectedChannel(c, initialChannel, relayInfo.OriginModelName); setupErr != nil {
+				respondTaskError(c, service.TaskErrorWrapperLocal(setupErr.Err, "setup_channel_failed", setupErr.StatusCode))
+				return
+			}
+		}
+	}
+
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {
@@ -518,7 +738,7 @@ func RelayTask(c *gin.Context) {
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		var channel *model.Channel
 
-		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
+		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil && !c.GetBool("prompt_audit_force_fallback") {
 			channel = lockedCh
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
@@ -534,6 +754,11 @@ func RelayTask(c *gin.Context) {
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
+		}
+		channel, channelErr := applyPromptAudit(c, relayInfo, &dto.ImageRequest{Prompt: auditTaskRequest.Prompt, Model: relayInfo.OriginModelName}, channel)
+		if channelErr != nil {
+			taskErr = service.TaskErrorWrapperLocal(channelErr.Err, string(channelErr.GetErrorCode()), channelErr.StatusCode)
+			break
 		}
 
 		addUsedChannel(c, channel.Id)
