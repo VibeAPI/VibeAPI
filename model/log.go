@@ -223,6 +223,7 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+	UserRemark        string `json:"-" gorm:"-"`
 }
 
 // don't use iota, avoid change log type value
@@ -501,6 +502,40 @@ func GetTopupLogsForExport(startTimestamp int64, endTimestamp int64, excludeAdmi
 		order = "created_at asc, request_id asc"
 	}
 	err = tx.Order(order).Limit(TopupLogExportLimit + 1).Find(&logs).Error
+	if err != nil || len(logs) > TopupLogExportLimit {
+		return logs, err
+	}
+
+	userIds := make([]int, 0)
+	seenUserIds := make(map[int]struct{})
+	for _, log := range logs {
+		if log == nil || log.UserId <= 0 {
+			continue
+		}
+		if _, exists := seenUserIds[log.UserId]; exists {
+			continue
+		}
+		seenUserIds[log.UserId] = struct{}{}
+		userIds = append(userIds, log.UserId)
+	}
+
+	const userBatchSize = 500
+	remarksByUserId := make(map[int]string, len(userIds))
+	for start := 0; start < len(userIds); start += userBatchSize {
+		end := min(start+userBatchSize, len(userIds))
+		var users []User
+		if err = DB.Unscoped().Select("id", "remark").Where("id IN ?", userIds[start:end]).Find(&users).Error; err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			remarksByUserId[user.Id] = user.Remark
+		}
+	}
+	for _, log := range logs {
+		if log != nil {
+			log.UserRemark = remarksByUserId[log.UserId]
+		}
+	}
 	return logs, err
 }
 
