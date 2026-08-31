@@ -112,9 +112,19 @@ func SyncChannelCache(frequency int) {
 }
 
 func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
+	return GetRandomSatisfiedChannelFiltered(group, model, retry, requestPath, userId, nil)
+}
+
+func GetRandomSatisfiedChannelFiltered(group string, model string, retry int, requestPath string, userId int, allow func(*Channel) bool) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		return GetChannel(group, model, retry, requestPath, userId)
+		if allow == nil {
+			return GetChannel(group, model, retry, requestPath, userId)
+		}
+		return getChannelFiltered(group, model, retry, requestPath, userId, func(channelId int, priority int64) bool {
+			channel, err := GetChannelById(channelId, true)
+			return err == nil && channel != nil && allow(channel)
+		})
 	}
 
 	channelSyncLock.RLock()
@@ -129,6 +139,16 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
 		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
 		channels = filterChannelsByUser(channels, userId)
+	}
+	if allow != nil {
+		filtered := make([]int, 0, len(channels))
+		for _, channelId := range channels {
+			channel, ok := channelsIDM[channelId]
+			if ok && allow(channel) {
+				filtered = append(filtered, channelId)
+			}
+		}
+		channels = filtered
 	}
 
 	if len(channels) == 0 {
@@ -208,6 +228,21 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+func GetRandomUnprotectedChannel(group string, model string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
+	allow := func(channel *Channel) bool {
+		return IsPromptAuditFallbackChannel(channel, maxPriority, protected)
+	}
+	return GetRandomSatisfiedChannelFiltered(group, model, 0, requestPath, userId, allow)
+}
+
+func IsPromptAuditFallbackChannel(channel *Channel, maxPriority int64, protected map[int]struct{}) bool {
+	if channel == nil || channel.GetPriority() > maxPriority {
+		return false
+	}
+	_, blocked := protected[channel.Id]
+	return !blocked
 }
 
 // filterChannelsByUser removes channels that explicitly block the requesting

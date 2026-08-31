@@ -83,3 +83,18 @@ func TestUpdateUsersRemarkUpdatesEverySelectedUser(t *testing.T) {
 	assert.Equal(t, "partner cohort", result[1].Remark)
 	assert.Empty(t, result[2].Remark)
 }
+
+func TestSearchUsersIncludesAdminRemark(t *testing.T) {
+	truncateTables(t)
+	users := []*User{
+		{Username: "alpha-user", AffCode: "alpha-user-code", Remark: "protected pro customer"},
+		{Username: "beta-user", AffCode: "beta-user-code", Remark: "standard customer"},
+	}
+	require.NoError(t, DB.Create(&users).Error)
+
+	result, total, err := SearchUsers("protected pro", "", nil, nil, nil, 0, 20)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	require.Len(t, result, 1)
+	assert.Equal(t, users[0].Id, result[0].Id)
+}

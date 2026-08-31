@@ -85,6 +85,136 @@ export async function updateUpstreamBalanceSettings(
   return res.data
 }
 
+export type PromptAuditEndpointSetting = {
+  url: string
+  api_key: string
+  has_api_key: boolean
+  model: string
+  system_prompt: string
+  timeout_seconds: number
+}
+
+export type PromptAuditSettings = {
+  enabled: boolean
+  mode: 'downgrade' | 'reject'
+  protected_channel_ids: number[]
+  audience_mode: 'all' | 'whitelist' | 'blacklist'
+  audience_user_ids: number[]
+  content_scope: 'latest' | 'latest_tools' | 'all'
+  max_characters: number
+  main_threshold: number
+  review_threshold: number
+  review_enabled: boolean
+  required_valid_votes: number
+  required_flagged_votes: number
+  review_total_timeout_seconds: number
+  allow_private_endpoints: boolean
+  first_restriction_hours: number
+  second_restriction_hours: number
+  violation_reset_days: number
+  dedupe_minutes: number
+  retention_days: number
+  reject_message: string
+  appeal_contact: string
+  version: number
+  tested_version: number
+  main_tested_version: number
+  review_tested_version: number
+  main: PromptAuditEndpointSetting
+  review: PromptAuditEndpointSetting
+}
+
+export async function getPromptAuditSettings() {
+  const res = await api.get<{
+    success: boolean
+    message: string
+    data?: PromptAuditSettings
+  }>('/api/option/prompt-audit', {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success || !res.data.data) {
+    throw new Error(res.data.message || 'Failed to load prompt audit settings')
+  }
+  return res.data.data
+}
+
+export async function updatePromptAuditSettings(request: PromptAuditSettings) {
+  const res = await api.put<UpdateOptionResponse>(
+    '/api/option/prompt-audit',
+    request,
+    { skipBusinessError: true, skipErrorHandler: true }
+  )
+  return res.data
+}
+
+export async function testPromptAuditSettings(
+  stage: 'main' | 'review',
+  content: string
+) {
+  const res = await api.post<UpdateOptionResponse>(
+    '/api/option/prompt-audit/test',
+    { stage, content },
+    { skipBusinessError: true, skipErrorHandler: true }
+  )
+  return res.data
+}
+
+export async function setPromptAuditEnabled(enabled: boolean) {
+  const res = await api.post<UpdateOptionResponse>(
+    `/api/option/prompt-audit/${enabled ? 'enable' : 'disable'}`,
+    undefined,
+    { skipBusinessError: true, skipErrorHandler: true }
+  )
+  return res.data
+}
+
+export type PromptAuditEvent = {
+  event_id: string
+  user_id: number
+  request_id: string
+  status: 'pending' | 'safe' | 'violation' | 'failed'
+  categories: string
+  main_confidence: number
+  valid_votes: number
+  flagged_votes: number
+  origin_channel_id: number
+  final_channel_id: number
+  content_truncated: boolean
+  failure_type: string
+  latency_ms: number
+  email_status: string
+  email_error: string
+  created_at: number
+}
+
+export async function getPromptAuditEvents(status = '') {
+  const res = await api.get<{
+    success: boolean
+    message: string
+    data?: { items: PromptAuditEvent[]; total: number }
+  }>('/api/option/prompt-audit/events', { params: { status, page_size: 50 } })
+  return res.data
+}
+
+export async function clearPromptAuditRestriction(
+  userId: number,
+  resetCount: boolean
+) {
+  const res = await api.post<UpdateOptionResponse>(
+    '/api/option/prompt-audit/restriction/clear',
+    { user_id: userId, reset_count: resetCount }
+  )
+  return res.data
+}
+
+export async function resendPromptAuditEmail(eventId: string) {
+  const res = await api.post<UpdateOptionResponse>(
+    `/api/option/prompt-audit/events/${eventId}/resend-email`
+  )
+  return res.data
+}
+
 export async function confirmPaymentCompliance() {
   const res = await api.post<ConfirmPaymentComplianceResponse>(
     '/api/option/payment_compliance',

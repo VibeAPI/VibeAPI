@@ -1052,6 +1052,390 @@ for (const [locale, translations] of Object.entries(
   Object.assign(newKeys[locale], translations)
 }
 
+const promptAuditTranslations = {
+  en: {},
+  zh: {
+    'Prompt Audit': '提示词审计',
+    'Protected-channel policy': '受保护渠道策略',
+    'Only requests selected for a protected channel are audited. Flagged or unavailable audits never return to protected channels.':
+      '仅审计即将使用受保护渠道的请求；违规或审计不可用时绝不会回到受保护渠道。',
+    'Enable prompt audit': '启用提示词审计',
+    'Prompt audit is currently enabled': '提示词审计当前已启用',
+    'Save, test both stages, then enable': '保存并测试两个审核阶段后再启用',
+    'Enforcement mode': '处置模式',
+    'Downgrade to an unprotected channel': '降级到不受保护的渠道',
+    'Verify and reject': '复核后拒绝',
+    'Audited content': '审计内容',
+    'Latest user input': '最新用户输入',
+    'Latest input and tool results': '最新输入和工具结果',
+    'All request text': '全部请求文本',
+    'Protected channels': '受保护渠道',
+    'Select protected channels...': '选择受保护渠道…',
+    'Audit audience': '审计用户范围',
+    'Audit all users': '审计全部用户',
+    'Exclude whitelisted users': '排除白名单用户',
+    'Audit only blacklisted users': '仅审计黑名单用户',
+    'Search users...': '搜索用户…',
+    'Test content': '测试内容',
+    'Optional custom content for the connection test':
+      '可选的连接测试自定义内容',
+    'Connection tests use the last saved settings.':
+      '连接测试使用最近一次保存的设置。',
+    'Primary audit model': '主审核模型',
+    'Five-vote review model': '五票复审模型',
+    'Connection test': '连接测试',
+    'Connection test failed': '连接测试失败',
+    'Connection test succeeded': '连接测试成功',
+    'Save the settings before running a connection test.':
+      '运行连接测试前请先保存设置。',
+    'Chat Completions URL': 'Chat Completions 地址',
+    'Leave blank to inherit the primary URL': '留空以继承主审核地址',
+    'Leave blank to keep the saved key': '留空以保留已保存的密钥',
+    'Timeout (seconds)': '超时（秒）',
+    'The input boundary and strict JSON response contract are enforced by the server.':
+      '输入边界和严格 JSON 响应契约由服务端强制执行。',
+    'Maximum audited characters': '最大审计字符数',
+    'Review total timeout (seconds)': '复审总超时（秒）',
+    'Primary confidence threshold': '主审置信度阈值',
+    'Review confidence threshold': '复审置信度阈值',
+    'Required valid votes': '所需有效票数',
+    'Required flagged votes': '所需违规票数',
+    'First restriction (hours)': '首次限制（小时）',
+    'Second restriction (hours)': '第二次限制（小时）',
+    'Violation reset window (days)': '违规计数重置周期（天）',
+    'Deduplication window (minutes)': '去重周期（分钟）',
+    'Event retention (days)': '事件保留天数',
+    'Allow private audit endpoints': '允许私有网络审计端点',
+    'Rejection message': '拒绝消息',
+    'Appeal contact': '申诉联系方式',
+    'Recent audit events': '最近审计事件',
+    'Raw prompts and model reasons are never stored.':
+      '系统不会存储原始提示词或模型理由。',
+    Event: '事件',
+    Votes: '投票',
+    Release: '解除限制',
+    'Reset count': '重置计数',
+    'Resend email': '重发邮件',
+    'No audit events': '暂无审计事件',
+    'Email resend queued': '邮件已加入重发队列',
+    'Operation completed successfully': '操作成功',
+    'Settings saved. Test both audit stages before enabling.':
+      '设置已保存，请测试两个审核阶段后再启用。',
+  },
+}
+
+const promptAuditLayoutTranslations = {
+  en: {
+    'A complete HTTPS URL is required': 'A complete HTTPS URL is required',
+    'A model and system prompt are required':
+      'A model and system prompt are required',
+    'An API key is required': 'An API key is required',
+    'The second restriction cannot be shorter than the first':
+      'The second restriction cannot be shorter than the first',
+    'Flagged votes cannot exceed valid votes':
+      'Flagged votes cannot exceed valid votes',
+    'Save and test every enabled audit stage before enabling':
+      'Save and test every enabled audit stage before enabling',
+    'Settings saved. Test every enabled audit stage before enabling.':
+      'Settings saved. Test every enabled audit stage before enabling.',
+    'Audit scope': 'Audit scope',
+    'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+      'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.',
+    'Controls how much request context is sent to the audit model.':
+      'Controls how much request context is sent to the audit model.',
+    'Only requests routed to these channel IDs are audited.':
+      'Only requests routed to these channel IDs are audited.',
+    'Whitelist excludes selected users; blacklist audits only selected users.':
+      'Whitelist excludes selected users; blacklist audits only selected users.',
+    'Search by ID, username, email, display name, or remark':
+      'Search by ID, username, email, display name, or remark',
+    'No matching users': 'No matching users',
+    'Search results include administrator remarks.':
+      'Search results include administrator remarks.',
+    'Audit models': 'Audit models',
+    'Allows audit endpoints on private networks; metadata addresses remain blocked.':
+      'Allows audit endpoints on private networks; metadata addresses remain blocked.',
+    'Runs once for every request selected for a protected channel.':
+      'Runs once for every request selected for a protected channel.',
+    'Enable five-vote review': 'Enable five-vote review',
+    'When disabled, a primary violation is enforced immediately without five-model verification.':
+      'When disabled, a primary violation is enforced immediately without five-model verification.',
+    'Five parallel votes independently verify a primary violation before applying restrictions.':
+      'Five parallel votes independently verify a primary violation before applying restrictions.',
+    'Decision and retention': 'Decision and retention',
+    'Characters retained from the request context, from 1 to 200,000.':
+      'Characters retained from the request context, from 1 to 200,000.',
+    'Values at or above this threshold are considered flagged (0–1).':
+      'Values at or above this threshold are considered flagged (0–1).',
+    'Each review vote must meet this confidence threshold (0–1).':
+      'Each review vote must meet this confidence threshold (0–1).',
+    'Maximum time allowed for all five review votes (1–120 seconds).':
+      'Maximum time allowed for all five review votes (1–120 seconds).',
+    'Minimum successful responses required from five review calls (1–5).':
+      'Minimum successful responses required from five review calls (1–5).',
+    'Minimum flagged votes required to confirm a violation; cannot exceed valid votes.':
+      'Minimum flagged votes required to confirm a violation; cannot exceed valid votes.',
+    'Reuses a recent decision for identical user content (1–1,440 minutes).':
+      'Reuses a recent decision for identical user content (1–1,440 minutes).',
+    'Keeps audit event metadata for 7–365 days; raw prompts are never stored.':
+      'Keeps audit event metadata for 7–365 days; raw prompts are never stored.',
+    'Restrictions and notification': 'Restrictions and notification',
+    'Protected-channel restriction after the first confirmed violation (1–8,760 hours).':
+      'Protected-channel restriction after the first confirmed violation (1–8,760 hours).',
+    'Restriction after the second violation; must be at least the first duration (up to 87,600 hours).':
+      'Restriction after the second violation; must be at least the first duration (up to 87,600 hours).',
+    'Resets the violation sequence after this many days without another violation (1–3,650).':
+      'Resets the violation sequence after this many days without another violation (1–3,650).',
+    'Returned to the user when reject mode blocks a request (up to 500 characters).':
+      'Returned to the user when reject mode blocks a request (up to 500 characters).',
+    'Optional contact information included in violation emails (up to 500 characters).':
+      'Optional contact information included in violation emails (up to 500 characters).',
+    'Leave blank to reuse the primary endpoint and API key.':
+      'Leave blank to reuse the primary endpoint and API key.',
+    'A complete HTTPS Chat Completions endpoint is required.':
+      'A complete HTTPS Chat Completions endpoint is required.',
+    'Leave blank to reuse the primary API key.':
+      'Leave blank to reuse the primary API key.',
+    'Stored encrypted; leave blank later to keep the saved key.':
+      'Stored encrypted; leave blank later to keep the saved key.',
+    'Up to 20,000 characters. The input boundary and strict JSON response contract are enforced by the server.':
+      'Up to 20,000 characters. The input boundary and strict JSON response contract are enforced by the server.',
+  },
+  zh: {
+    'A complete HTTPS URL is required': '请输入完整的 HTTPS 地址',
+    'A model and system prompt are required': '模型和系统提示词不能为空',
+    'An API key is required': '请输入 API 密钥',
+    'The second restriction cannot be shorter than the first':
+      '第二次限制时长不能短于首次限制',
+    'Flagged votes cannot exceed valid votes': '违规票数不能超过有效票数',
+    'Save and test every enabled audit stage before enabling':
+      '保存并测试所有已启用的审核阶段后再启用',
+    'Settings saved. Test every enabled audit stage before enabling.':
+      '设置已保存，请测试所有已启用的审核阶段后再启用。',
+    'Audit scope': '审计范围',
+    'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+      '选择将违规请求降级到低优先级非保护渠道，或直接拒绝。',
+    'Controls how much request context is sent to the audit model.':
+      '控制发送给审核模型的请求上下文范围。',
+    'Only requests routed to these channel IDs are audited.':
+      '仅审计即将路由到这些渠道 ID 的请求。',
+    'Whitelist excludes selected users; blacklist audits only selected users.':
+      '白名单模式排除所选用户；黑名单模式仅审计所选用户。',
+    'Search by ID, username, email, display name, or remark':
+      '按 ID、用户名、邮箱、显示名称或备注搜索',
+    'No matching users': '没有匹配的用户',
+    'Search results include administrator remarks.': '搜索结果包含管理员备注。',
+    'Audit models': '审核模型',
+    'Allows audit endpoints on private networks; metadata addresses remain blocked.':
+      '允许使用私有网络审核端点；云元数据地址仍会被拦截。',
+    'Runs once for every request selected for a protected channel.':
+      '每个命中受保护渠道的请求都会执行一次主审核。',
+    'Enable five-vote review': '启用五票复审',
+    'When disabled, a primary violation is enforced immediately without five-model verification.':
+      '关闭后，主审核判定违规将立即处置，不再进行五次交叉验证。',
+    'Five parallel votes independently verify a primary violation before applying restrictions.':
+      '五路并行投票会独立复核主审结果，确认后才应用限制。',
+    'Decision and retention': '判定与留存',
+    'Characters retained from the request context, from 1 to 200,000.':
+      '从请求上下文中保留的字符数，范围为 1–200,000。',
+    'Values at or above this threshold are considered flagged (0–1).':
+      '置信度达到此阈值即视为违规，范围为 0–1。',
+    'Each review vote must meet this confidence threshold (0–1).':
+      '每票复审达到此置信度才计为违规票，范围为 0–1。',
+    'Maximum time allowed for all five review votes (1–120 seconds).':
+      '五次复审允许的总耗时，范围为 1–120 秒。',
+    'Minimum successful responses required from five review calls (1–5).':
+      '五次复审中至少需要成功返回的数量，范围为 1–5。',
+    'Minimum flagged votes required to confirm a violation; cannot exceed valid votes.':
+      '确认违规所需的最少违规票数，不能超过有效票数。',
+    'Reuses a recent decision for identical user content (1–1,440 minutes).':
+      '同一用户提交相同内容时复用近期判定，范围为 1–1,440 分钟。',
+    'Keeps audit event metadata for 7–365 days; raw prompts are never stored.':
+      '审计事件元数据保留 7–365 天；不会存储原始提示词。',
+    'Restrictions and notification': '限制与通知',
+    'Protected-channel restriction after the first confirmed violation (1–8,760 hours).':
+      '首次确认违规后的受保护渠道限制时长，范围为 1–8,760 小时。',
+    'Restriction after the second violation; must be at least the first duration (up to 87,600 hours).':
+      '第二次违规后的限制时长，不能短于首次限制，最多 87,600 小时。',
+    'Resets the violation sequence after this many days without another violation (1–3,650).':
+      '连续无违规达到该天数后重置违规次数，范围为 1–3,650 天。',
+    'Returned to the user when reject mode blocks a request (up to 500 characters).':
+      '拒绝模式拦截请求时返回给用户，最多 500 个字符。',
+    'Optional contact information included in violation emails (up to 500 characters).':
+      '可选，将写入违规提醒邮件，最多 500 个字符。',
+    'Leave blank to reuse the primary endpoint and API key.':
+      '留空将复用主审核端点和 API 密钥。',
+    'A complete HTTPS Chat Completions endpoint is required.':
+      '必须填写完整的 HTTPS Chat Completions 端点。',
+    'Leave blank to reuse the primary API key.': '留空将复用主审核 API 密钥。',
+    'Stored encrypted; leave blank later to keep the saved key.':
+      '密钥将加密保存；后续留空可保留已保存的密钥。',
+    'Up to 20,000 characters. The input boundary and strict JSON response contract are enforced by the server.':
+      '最多 20,000 个字符；输入边界和严格 JSON 响应契约由服务端强制执行。',
+  },
+}
+
+promptAuditLayoutTranslations['zh-TW'] = { ...promptAuditLayoutTranslations.zh }
+promptAuditLayoutTranslations.fr = {
+  ...promptAuditLayoutTranslations.en,
+  'A model and system prompt are required':
+    'Un modèle et une invite système sont requis',
+  'Audit scope': 'Périmètre de l’audit',
+  'Decision and retention': 'Décision et conservation',
+  'Enable five-vote review': 'Activer la révision à cinq votes',
+  'Restrictions and notification': 'Restrictions et notification',
+  'Search by ID, username, email, display name, or remark':
+    'Rechercher par ID, nom d’utilisateur, e-mail, nom affiché ou remarque',
+  'Save and test every enabled audit stage before enabling':
+    'Enregistrez et testez chaque étape d’audit activée avant l’activation',
+  'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+    'Choisissez de rediriger une requête signalée vers un canal non protégé moins prioritaire ou de la refuser.',
+  'Controls how much request context is sent to the audit model.':
+    'Définit la quantité de contexte envoyée au modèle d’audit.',
+  'Only requests routed to these channel IDs are audited.':
+    'Seules les requêtes routées vers ces identifiants de canal sont auditées.',
+  'Values at or above this threshold are considered flagged (0–1).':
+    'Les valeurs supérieures ou égales à ce seuil sont signalées (0–1).',
+  'Characters retained from the request context, from 1 to 200,000.':
+    'Nombre de caractères conservés du contexte, de 1 à 200 000.',
+}
+promptAuditLayoutTranslations.ja = {
+  ...promptAuditLayoutTranslations.en,
+  'A model and system prompt are required':
+    'モデルとシステムプロンプトは必須です',
+  'Audit scope': '監査範囲',
+  'Audit models': '監査モデル',
+  'Decision and retention': '判定と保持',
+  'Enable five-vote review': '5票レビューを有効化',
+  'Restrictions and notification': '制限と通知',
+  'Search by ID, username, email, display name, or remark':
+    'ID、ユーザー名、メール、表示名、備考で検索',
+  'Save and test every enabled audit stage before enabling':
+    '有効な監査段階をすべて保存・テストしてから有効化してください',
+  'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+    '違反リクエストを低優先度の非保護チャネルへ回すか拒否するかを選択します。',
+  'Controls how much request context is sent to the audit model.':
+    '監査モデルへ送るリクエスト文脈の範囲を指定します。',
+  'Only requests routed to these channel IDs are audited.':
+    'これらのチャネルIDへ送られるリクエストだけを監査します。',
+  'Values at or above this threshold are considered flagged (0–1).':
+    'このしきい値以上を違反と判定します（0～1）。',
+  'Characters retained from the request context, from 1 to 200,000.':
+    'リクエスト文脈から保持する文字数です（1～200,000）。',
+}
+promptAuditLayoutTranslations.ru = {
+  ...promptAuditLayoutTranslations.en,
+  'A model and system prompt are required':
+    'Необходимо указать модель и системный промпт',
+  'Audit scope': 'Область аудита',
+  'Audit models': 'Модели аудита',
+  'Decision and retention': 'Решение и хранение',
+  'Enable five-vote review': 'Включить проверку пятью голосами',
+  'Restrictions and notification': 'Ограничения и уведомления',
+  'Search by ID, username, email, display name, or remark':
+    'Поиск по ID, имени, почте, отображаемому имени или примечанию',
+  'Save and test every enabled audit stage before enabling':
+    'Сохраните и протестируйте каждый включённый этап аудита',
+  'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+    'Выберите: направить нарушающий запрос в менее приоритетный незащищённый канал или отклонить его.',
+  'Controls how much request context is sent to the audit model.':
+    'Определяет объём контекста запроса, передаваемый модели аудита.',
+  'Only requests routed to these channel IDs are audited.':
+    'Проверяются только запросы, направленные в указанные каналы.',
+  'Values at or above this threshold are considered flagged (0–1).':
+    'Значения не ниже этого порога считаются нарушением (0–1).',
+  'Characters retained from the request context, from 1 to 200,000.':
+    'Количество сохраняемых символов контекста: от 1 до 200 000.',
+}
+promptAuditLayoutTranslations.vi = {
+  ...promptAuditLayoutTranslations.en,
+  'A model and system prompt are required':
+    'Bắt buộc có mô hình và lời nhắc hệ thống',
+  'Audit scope': 'Phạm vi kiểm tra',
+  'Decision and retention': 'Quyết định và lưu trữ',
+  'Enable five-vote review': 'Bật xác minh năm phiếu',
+  'Restrictions and notification': 'Hạn chế và thông báo',
+  'Search by ID, username, email, display name, or remark':
+    'Tìm theo ID, tên người dùng, email, tên hiển thị hoặc ghi chú',
+  'Save and test every enabled audit stage before enabling':
+    'Lưu và kiểm tra mọi giai đoạn đang bật trước khi kích hoạt',
+  'Choose whether a flagged request is routed to a lower-priority unprotected channel or rejected.':
+    'Chọn chuyển yêu cầu vi phạm sang kênh không được bảo vệ có ưu tiên thấp hơn hoặc từ chối.',
+  'Controls how much request context is sent to the audit model.':
+    'Kiểm soát lượng ngữ cảnh yêu cầu được gửi đến mô hình kiểm tra.',
+  'Only requests routed to these channel IDs are audited.':
+    'Chỉ kiểm tra các yêu cầu được định tuyến đến những ID kênh này.',
+  'Values at or above this threshold are considered flagged (0–1).':
+    'Giá trị bằng hoặc cao hơn ngưỡng này được xem là vi phạm (0–1).',
+  'Characters retained from the request context, from 1 to 200,000.':
+    'Số ký tự giữ lại từ ngữ cảnh yêu cầu, từ 1 đến 200.000.',
+}
+for (const [locale, translations] of Object.entries(
+  promptAuditLayoutTranslations
+)) {
+  Object.assign(newKeys[locale], translations)
+}
+
+for (const key of Object.keys(promptAuditTranslations.zh)) {
+  promptAuditTranslations.en[key] = key
+}
+promptAuditTranslations['zh-TW'] = { ...promptAuditTranslations.zh }
+promptAuditTranslations.fr = {
+  ...promptAuditTranslations.en,
+  'Prompt Audit': 'Audit des invites',
+  'Protected-channel policy': 'Politique des canaux protégés',
+  'Enable prompt audit': 'Activer l’audit des invites',
+  'Enforcement mode': 'Mode d’application',
+  'Protected channels': 'Canaux protégés',
+  'Audit audience': 'Utilisateurs audités',
+  'Primary audit model': 'Modèle d’audit principal',
+  'Five-vote review model': 'Modèle de révision à cinq votes',
+  'Connection test': 'Test de connexion',
+  'Recent audit events': 'Événements d’audit récents',
+}
+promptAuditTranslations.ja = {
+  ...promptAuditTranslations.en,
+  'Prompt Audit': 'プロンプト監査',
+  'Protected-channel policy': '保護チャネルポリシー',
+  'Enable prompt audit': 'プロンプト監査を有効化',
+  'Enforcement mode': '適用モード',
+  'Protected channels': '保護対象チャネル',
+  'Audit audience': '監査対象ユーザー',
+  'Primary audit model': '主監査モデル',
+  'Five-vote review model': '5票レビュー用モデル',
+  'Connection test': '接続テスト',
+  'Recent audit events': '最近の監査イベント',
+}
+promptAuditTranslations.ru = {
+  ...promptAuditTranslations.en,
+  'Prompt Audit': 'Аудит запросов',
+  'Protected-channel policy': 'Политика защищённых каналов',
+  'Enable prompt audit': 'Включить аудит запросов',
+  'Enforcement mode': 'Режим применения',
+  'Protected channels': 'Защищённые каналы',
+  'Audit audience': 'Область аудита',
+  'Primary audit model': 'Основная модель аудита',
+  'Five-vote review model': 'Модель повторной проверки (5 голосов)',
+  'Connection test': 'Проверка подключения',
+  'Recent audit events': 'Недавние события аудита',
+}
+promptAuditTranslations.vi = {
+  ...promptAuditTranslations.en,
+  'Prompt Audit': 'Kiểm tra câu lệnh',
+  'Protected-channel policy': 'Chính sách kênh được bảo vệ',
+  'Enable prompt audit': 'Bật kiểm tra câu lệnh',
+  'Enforcement mode': 'Chế độ xử lý',
+  'Protected channels': 'Kênh được bảo vệ',
+  'Audit audience': 'Đối tượng kiểm tra',
+  'Primary audit model': 'Mô hình kiểm tra chính',
+  'Five-vote review model': 'Mô hình xác minh năm phiếu',
+  'Connection test': 'Kiểm tra kết nối',
+  'Recent audit events': 'Sự kiện kiểm tra gần đây',
+}
+for (const [locale, translations] of Object.entries(promptAuditTranslations)) {
+  Object.assign(newKeys[locale], translations)
+}
+
 async function main() {
   let totalApplied = 0
 
