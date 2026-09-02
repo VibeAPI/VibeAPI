@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	"gorm.io/gorm"
 )
@@ -72,13 +73,18 @@ func GetTopupPaymentAmount(log *Log) (float64, bool) {
 	}
 	// Pending corporate orders and subscription records are type=1 for legacy
 	// reasons, but they are not wallet top-up records for this export.
-	if strings.Contains(log.Content, "提交对公支付订单") || strings.Contains(log.Content, "订阅购买成功") {
+	if strings.Contains(log.Content, "提交对公支付订单") ||
+		strings.Contains(log.Content, "订阅购买成功") ||
+		strings.Contains(log.Content, "通过兑换码充值") {
 		return 0, false
 	}
 
 	if log.Other != "" {
 		if other, err := common.StrToMap(log.Other); err == nil {
 			if adminInfo, ok := other["admin_info"].(map[string]interface{}); ok {
+				if adminInfo["payment_method"] == "redemption" || adminInfo["callback_payment_method"] == "redemption" {
+					return 0, false
+				}
 				if value, ok := adminInfo["payment_amount"]; ok {
 					if amount, ok := topupPaymentAmountValue(value); ok {
 						return amount, true
@@ -858,21 +864,15 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota         int     `json:"quota"`
+	PaymentAmount float64 `json:"payment_amount"`
+	Rpm           int     `json:"rpm"`
+	Tpm           int     `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, userRemark string, tokenName string, channel int, group string, excludeAdmins bool) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
-
-	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
-
+func GetLogStat(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, userRemark string, tokenName string, channel int, group string, requestId string, upstreamRequestId string, excludeAdmins bool) (stat Stat, err error) {
+	tx := LOG_DB.Table("logs")
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
-		return stat, err
-	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
 		return stat, err
 	}
 	if userRemark != "" {
@@ -884,11 +884,9 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 			return stat, nil
 		}
 		tx = tx.Where("user_id IN ?", userIds)
-		rpmTpmQuery = rpmTpmQuery.Where("user_id IN ?", userIds)
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)
-		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
 	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
@@ -899,16 +897,17 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
 		return stat, err
 	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
-		return stat, err
-	}
 	if channel > 0 {
 		tx = tx.Where("channel_id = ?", channel)
-		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	if requestId != "" {
+		tx = tx.Where("request_id = ?", requestId)
+	}
+	if upstreamRequestId != "" {
+		tx = tx.Where("upstream_request_id = ?", upstreamRequestId)
 	}
 	if excludeAdmins {
 		adminUserIds, adminErr := getAdminUserIds()
@@ -917,18 +916,53 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		}
 		if len(adminUserIds) > 0 {
 			tx = tx.Where("user_id NOT IN ?", adminUserIds)
-			rpmTpmQuery = rpmTpmQuery.Where("user_id NOT IN ?", adminUserIds)
 		}
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
-	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+	if logType == LogTypeTopup {
+		rows, queryErr := tx.
+			Select("type", "content", "other").
+			Where("type = ?", LogTypeTopup).
+			Rows()
+		if queryErr != nil {
+			common.SysError("failed to query top-up log stat: " + queryErr.Error())
+			return stat, errors.New("查询统计数据失败")
+		}
+		defer rows.Close()
+
+		paymentAmount := decimal.Zero
+		for rows.Next() {
+			var log Log
+			if scanErr := rows.Scan(&log.Type, &log.Content, &log.Other); scanErr != nil {
+				common.SysError("failed to scan top-up log stat: " + scanErr.Error())
+				return stat, errors.New("查询统计数据失败")
+			}
+			amount, ok := GetTopupPaymentAmount(&log)
+			if !ok {
+				continue
+			}
+			paymentAmount = paymentAmount.Add(decimal.NewFromFloat(amount))
+		}
+		if rowsErr := rows.Err(); rowsErr != nil {
+			common.SysError("failed to iterate top-up log stat: " + rowsErr.Error())
+			return stat, errors.New("查询统计数据失败")
+		}
+		stat.PaymentAmount = paymentAmount.InexactFloat64()
+		return stat, nil
+	}
+
+	quotaQuery := tx.Session(&gorm.Session{}).
+		Select("COALESCE(sum(quota), 0) quota").
+		Where("type = ?", LogTypeConsume)
+	rpmTpmQuery := tx.Session(&gorm.Session{}).
+		Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm").
+		Where("type = ?", LogTypeConsume)
 
 	// 只统计最近60秒的rpm和tpm
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
 	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
+	if err := quotaQuery.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}

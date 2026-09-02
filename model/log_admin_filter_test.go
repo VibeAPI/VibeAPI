@@ -34,7 +34,7 @@ func TestAdminLogFilterExcludesAdminAndRootUsers(t *testing.T) {
 	require.Len(t, filteredLogs, 1)
 	assert.Equal(t, users[0].Id, filteredLogs[0].UserId)
 
-	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", "", 0, "", true)
+	stat, err := GetLogStat(LogTypeConsume, 0, 0, "", "", "", "", 0, "", "", "", true)
 	require.NoError(t, err)
 	assert.Equal(t, 10, stat.Quota)
 	assert.Equal(t, 1, stat.Rpm)
@@ -63,7 +63,7 @@ func TestAdminLogFilterMatchesUserRemark(t *testing.T) {
 	require.Len(t, filteredLogs, 1)
 	assert.Equal(t, users[0].Id, filteredLogs[0].UserId)
 
-	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "partner", "", 0, "", false)
+	stat, err := GetLogStat(LogTypeConsume, 0, 0, "", "", "partner", "", 0, "", "", "", false)
 	require.NoError(t, err)
 	assert.Equal(t, 10, stat.Quota)
 }
@@ -83,9 +83,76 @@ func TestAdminLogFilterIgnoresNonPositiveChannelSentinel(t *testing.T) {
 	assert.EqualValues(t, 2, total)
 	assert.Len(t, filteredLogs, 2)
 
-	stat, err := SumUsedQuota(LogTypeConsume, 0, 0, "", "", "", "", -1, "", false)
+	stat, err := GetLogStat(LogTypeConsume, 0, 0, "", "", "", "", -1, "", "", "", false)
 	require.NoError(t, err)
 	assert.Equal(t, 30, stat.Quota)
+}
+
+func TestTopupLogStatSumsActualPaymentsOnly(t *testing.T) {
+	truncateTables(t)
+
+	users := []*User{
+		{Username: "paying-topup-user", Role: common.RoleCommonUser, AffCode: "paying-topup-user"},
+		{Username: "topup-stat-admin", Role: common.RoleAdminUser, AffCode: "topup-stat-admin"},
+	}
+	require.NoError(t, DB.Create(&users).Error)
+
+	logs := []*Log{
+		{
+			UserId:            users[0].Id,
+			Username:          users[0].Username,
+			Type:              LogTypeTopup,
+			CreatedAt:         200,
+			Quota:             5_000_000,
+			Content:           "充值成功，充值金额：10，支付金额：999",
+			Other:             `{"payment_amount":8}`,
+			RequestId:         "paid-request",
+			UpstreamRequestId: "paid-upstream-request",
+		},
+		{
+			UserId:    users[0].Id,
+			Username:  users[0].Username,
+			Type:      LogTypeTopup,
+			CreatedAt: 210,
+			Quota:     5_000_000,
+			Content:   "充值成功，充值金额：10，支付金额：4.5",
+		},
+		{
+			UserId:    users[0].Id,
+			Username:  users[0].Username,
+			Type:      LogTypeTopup,
+			CreatedAt: 220,
+			Quota:     50_000_000,
+			Content:   "通过兑换码充值 $100",
+		},
+		{
+			UserId:    users[1].Id,
+			Username:  users[1].Username,
+			Type:      LogTypeTopup,
+			CreatedAt: 230,
+			Quota:     50_000_000,
+			Content:   "充值成功，支付金额：100",
+		},
+		{
+			UserId:    users[0].Id,
+			Username:  users[0].Username,
+			Type:      LogTypeConsume,
+			CreatedAt: 240,
+			Quota:     999,
+		},
+	}
+	require.NoError(t, LOG_DB.Create(&logs).Error)
+
+	stat, err := GetLogStat(LogTypeTopup, 150, 250, "", "", "", "", 0, "", "", "", true)
+	require.NoError(t, err)
+	assert.Equal(t, 12.5, stat.PaymentAmount)
+	assert.Zero(t, stat.Quota)
+	assert.Zero(t, stat.Rpm)
+	assert.Zero(t, stat.Tpm)
+
+	requestStat, err := GetLogStat(LogTypeTopup, 0, 0, "", users[0].Username, "", "", 0, "", "paid-request", "paid-upstream-request", false)
+	require.NoError(t, err)
+	assert.Equal(t, 8.0, requestStat.PaymentAmount)
 }
 
 func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
