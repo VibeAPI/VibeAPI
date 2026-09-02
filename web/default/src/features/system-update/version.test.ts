@@ -16,26 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useTranslation } from 'react-i18next'
+import assert from 'node:assert/strict'
+import { describe, test } from 'node:test'
 
-import { VersionManager } from '@/features/system-update'
+import { compareVersions } from './version'
 
-import { SettingsSection } from '../components/settings-section'
+describe('system update version comparison', () => {
+  test('orders stable and prerelease versions using semver precedence', () => {
+    assert.equal(compareVersions('v1.2.3', '1.2.3-rc.1'), 1)
+    assert.equal(compareVersions('1.2.3-rc.2', '1.2.3-rc.10'), -1)
+    assert.equal(compareVersions('1.2.3-1', '1.2.3-alpha'), -1)
+  })
 
-type UpdateCheckerSectionProps = {
-  currentVersion?: string | null
-  startTime?: number | null
-}
-
-export function UpdateCheckerSection(props: UpdateCheckerSectionProps) {
-  const { t } = useTranslation()
-
-  return (
-    <SettingsSection title={t('System maintenance')}>
-      <VersionManager
-        currentVersion={props.currentVersion}
-        startTime={props.startTime}
-      />
-    </SettingsSection>
-  )
-}
+  test('ignores build metadata and compares large numeric identifiers exactly', () => {
+    assert.equal(compareVersions('1.2.3+build.2', 'v1.2.3+build.1'), 0)
+    assert.equal(
+      compareVersions('1.2.9007199254740993', '1.2.9007199254740992'),
+      1
+    )
+  })
+})

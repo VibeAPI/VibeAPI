@@ -83,6 +83,9 @@ jobs:
           tags: |
             heself/vibeapi:${{ env.TAG }}-${{ matrix.arch }}
             heself/vibeapi:latest-${{ matrix.arch }}
+          build-args: |
+            BUILD_VERSION=${{ env.TAG }}
+            SOURCE_COMMIT=${{ github.sha }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

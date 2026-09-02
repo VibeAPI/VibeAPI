@@ -16,26 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useTranslation } from 'react-i18next'
 
-import { VersionManager } from '@/features/system-update'
-
-import { SettingsSection } from '../components/settings-section'
-
-type UpdateCheckerSectionProps = {
-  currentVersion?: string | null
-  startTime?: number | null
-}
-
-export function UpdateCheckerSection(props: UpdateCheckerSectionProps) {
-  const { t } = useTranslation()
-
-  return (
-    <SettingsSection title={t('System maintenance')}>
-      <VersionManager
-        currentVersion={props.currentVersion}
-        startTime={props.startTime}
-      />
-    </SettingsSection>
-  )
-}
+export { ReleaseNotesSheet } from './release-notes-sheet'
+export { SidebarVersionEntry } from './sidebar-version-entry'
+export { VersionManager } from './version-manager'

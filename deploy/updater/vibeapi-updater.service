@@ -1,0 +1,26 @@
+[Unit]
+Description=VibeAPI Docker Compose updater
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=vibeapi-updater
+Group=vibeapi-updater
+SupplementaryGroups=docker
+ExecStart=/usr/local/bin/vibeapi-updater -config /etc/vibeapi-updater/config.json
+Restart=on-failure
+RestartSec=5s
+UMask=0007
+RuntimeDirectory=vibeapi-updater
+RuntimeDirectoryMode=0750
+StateDirectory=vibeapi-updater
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/vibeapi-updater /var/lib/vibeapi-updater
+
+[Install]
+WantedBy=multi-user.target

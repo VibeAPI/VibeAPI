@@ -25,6 +25,7 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/uptime/status", controller.GetUptimeKumaStatus)
 		apiRouter.GET("/models", middleware.UserAuth(), controller.DashboardListModels)
 		apiRouter.GET("/status/test", middleware.AdminAuth(), controller.TestStatus)
+		apiRouter.GET("/system-update/readiness", controller.GetSystemUpdateReadiness)
 		apiRouter.GET("/notice", controller.GetNotice)
 		apiRouter.GET("/user-agreement", controller.GetUserAgreement)
 		apiRouter.GET("/privacy-policy", controller.GetPrivacyPolicy)
@@ -316,6 +317,16 @@ func SetApiRouter(router *gin.Engine) {
 			systemInfoRoute.GET("/instances", controller.ListSystemInstances)
 			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
+		}
+		systemUpdateRoute := apiRouter.Group("/system-update")
+		systemUpdateRoute.Use(middleware.RootAuth())
+		{
+			systemUpdateRoute.GET("/capabilities", controller.GetSystemUpdateCapabilities)
+			systemUpdateRoute.GET("/releases", controller.ListSystemUpdateReleases)
+			systemUpdateRoute.POST("/preflight", controller.PreflightSystemUpdate)
+			systemUpdateRoute.GET("/operations", controller.ListSystemUpdateOperations)
+			systemUpdateRoute.POST("/operations", controller.StartSystemUpdateOperation)
+			systemUpdateRoute.GET("/operations/:operation_id", controller.GetSystemUpdateOperation)
 		}
 
 		dataRoute := apiRouter.Group("/data")

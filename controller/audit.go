@@ -30,6 +30,7 @@ var auditContentTemplates = map[string]string{
 	"user.reset_passkey":      "Reset the user passkey",
 	"option.update":           "Updated system setting ${key}",
 	"upstream_balance.update": "Updated upstream balance settings (${account_count} accounts)",
+	"system_update.start":     "Started system version switch to ${version} (${digest})",
 
 	"channel.create":             "Created channel ${name} (type ${type}, count ${count})",
 	"channel.update":             "Updated channel ${name} (ID: ${id})",

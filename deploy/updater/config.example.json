@@ -1,0 +1,22 @@
+{
+  "socket_path": "/run/vibeapi-updater/updater.sock",
+  "state_dir": "/var/lib/vibeapi-updater",
+  "compose_files": ["/opt/vibeapi/docker-compose.yml"],
+  "compose_project": "vibeapi",
+  "compose_service": "new-api",
+  "image_repository": "heself/vibeapi",
+  "bootstrap_repositories": ["calciumion/new-api"],
+  "release_repository": "VibeAPI/VibeAPI",
+  "app_url": "http://127.0.0.1:3000",
+  "readiness_path": "/api/system-update/readiness",
+  "legacy_status_path": "/api/status",
+  "readiness_token": "replace-with-a-random-secret-of-at-least-32-characters",
+  "api_token": "replace-with-another-random-secret-of-at-least-32-characters",
+  "docker_binary": "/usr/bin/docker",
+  "health_timeout": "5m",
+  "stable_window": "60s",
+  "poll_interval": "2s",
+  "command_timeout": "10m",
+  "shutdown_wait_timeout": "12m",
+  "minimum_free_bytes": 2147483648
+}
