@@ -71,7 +71,7 @@ func ExportTopupLogs(c *gin.Context) {
 	if currencySymbol == "" {
 		currencySymbol = "$"
 	}
-	usernameSanitizer := strings.NewReplacer("\t", " ", "\r", " ", "\n", " ")
+	fieldSanitizer := strings.NewReplacer("\t", " ", "\r", " ", "\n", " ")
 	for _, log := range logs {
 		if log == nil || log.Username == "" {
 			continue
@@ -82,8 +82,12 @@ func ExportTopupLogs(c *gin.Context) {
 		}
 		amountText := decimal.NewFromFloat(amount).Round(6).String()
 		date := time.Unix(log.CreatedAt, 0).In(time.Local).Format("2006/01/02")
-		username := usernameSanitizer.Replace(log.Username)
-		fmt.Fprintf(&export, "%s %s%s %s\n", username, currencySymbol, amountText, date)
+		username := fieldSanitizer.Replace(log.Username)
+		userRemark := fieldSanitizer.Replace(strings.TrimSpace(log.UserRemark))
+		if userRemark == "" {
+			userRemark = "自有用户"
+		}
+		fmt.Fprintf(&export, "%s\t%s%s\t%s\t%s\n", username, currencySymbol, amountText, date, userRemark)
 	}
 
 	filename := "topup-records-" + time.Now().Format("20060102-150405") + ".txt"

@@ -159,7 +159,7 @@ func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
 	truncateTables(t)
 
 	users := []*User{
-		{Username: "topup-export-user", Role: common.RoleCommonUser, AffCode: "topup-export-user"},
+		{Username: "topup-export-user", Role: common.RoleCommonUser, AffCode: "topup-export-user", Remark: "partner cohort"},
 		{Username: "topup-export-admin", Role: common.RoleAdminUser, AffCode: "topup-export-admin"},
 	}
 	require.NoError(t, DB.Create(&users).Error)
@@ -180,6 +180,7 @@ func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
 	assert.Equal(t, int64(200), exported[0].CreatedAt)
 	assert.Equal(t, 1_000_000, exported[0].Quota)
 	assert.Equal(t, LogTypeTopup, exported[0].Type)
+	assert.Equal(t, users[0].Remark, exported[0].UserRemark)
 	amount, ok := GetTopupPaymentAmount(exported[0])
 	require.True(t, ok)
 	assert.Equal(t, 1.6, amount)

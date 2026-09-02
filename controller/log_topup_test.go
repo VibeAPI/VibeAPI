@@ -78,14 +78,28 @@ func TestExportTopupLogsReturnsActualPaymentCopyText(t *testing.T) {
 		operation_setting.GetGeneralSetting().QuotaDisplayType = originalDisplayType
 	})
 
+	users := []*model.User{
+		{Username: "alice", Remark: "fcy", AffCode: "alice-topup-export"},
+		{Username: "bob", Remark: "   ", AffCode: "bob-topup-export"},
+	}
+	require.NoError(t, db.Create(&users).Error)
+
 	createdAt := int64(1_700_000_000)
 	require.NoError(t, db.Create(&model.Log{
-		UserId:    1,
-		Username:  "alice",
+		UserId:    users[0].Id,
+		Username:  users[0].Username,
 		CreatedAt: createdAt,
 		Type:      model.LogTypeTopup,
 		Quota:     50_000_000,
 		Content:   "使用在线充值成功，充值金额: $100.000000 额度，支付金额：80.000000",
+	}).Error)
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    users[1].Id,
+		Username:  users[1].Username,
+		CreatedAt: createdAt + 1,
+		Type:      model.LogTypeTopup,
+		Quota:     500_000,
+		Content:   "使用在线充值成功，充值金额: $1.000000 额度，支付金额：1.000000",
 	}).Error)
 
 	recorder := httptest.NewRecorder()
@@ -99,6 +113,11 @@ func TestExportTopupLogsReturnsActualPaymentCopyText(t *testing.T) {
 	ExportTopupLogs(ctx)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
-	expectedDate := time.Unix(createdAt, 0).In(time.Local).Format("2006/01/02")
-	require.Equal(t, fmt.Sprintf("alice $80 %s\n", expectedDate), recorder.Body.String())
+	firstDate := time.Unix(createdAt, 0).In(time.Local).Format("2006/01/02")
+	secondDate := time.Unix(createdAt+1, 0).In(time.Local).Format("2006/01/02")
+	require.Equal(
+		t,
+		fmt.Sprintf("alice\t$80\t%s\tfcy\nbob\t$1\t%s\t自有用户\n", firstDate, secondDate),
+		recorder.Body.String(),
+	)
 }
