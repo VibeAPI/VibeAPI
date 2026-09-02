@@ -266,6 +266,8 @@ export function CommonLogsFilterBar<TData>(
       const records = await exportTopupLogs({
         start_timestamp: Math.floor(filters.startTime.getTime() / 1000),
         end_timestamp: Math.floor(filters.endTime.getTime() / 1000),
+        username: filters.username || undefined,
+        user_remark: filters.userRemark || undefined,
         exclude_admins: searchParams.excludeAdmins || undefined,
       })
       const text = records.trim()
@@ -286,6 +288,8 @@ export function CommonLogsFilterBar<TData>(
     copyToClipboard,
     filters.endTime,
     filters.startTime,
+    filters.userRemark,
+    filters.username,
     searchParams.excludeAdmins,
     t,
   ])

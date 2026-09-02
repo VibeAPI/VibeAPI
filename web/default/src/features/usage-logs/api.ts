@@ -87,6 +87,8 @@ export const getUserLogStats = (
 export async function exportTopupLogs(params: {
   start_timestamp: number
   end_timestamp: number
+  username?: string
+  user_remark?: string
   exclude_admins?: boolean
 }): Promise<string> {
   const queryParams = buildQueryParams(params)

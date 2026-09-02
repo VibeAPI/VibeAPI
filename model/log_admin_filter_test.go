@@ -173,7 +173,7 @@ func TestGetTopupLogsForExportFiltersTimeRangeAndAdministrators(t *testing.T) {
 	}
 	require.NoError(t, LOG_DB.Create(&logs).Error)
 
-	exported, err := GetTopupLogsForExport(150, 275, true)
+	exported, err := GetTopupLogsForExport(150, 275, "", "", true)
 	require.NoError(t, err)
 	require.Len(t, exported, 1)
 	assert.Equal(t, users[0].Username, exported[0].Username)

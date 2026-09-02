@@ -68,7 +68,7 @@ func TestGetLogsStatReturnsActualTopupPaymentAmount(t *testing.T) {
 	assert.Zero(t, response.Data.Tpm)
 }
 
-func TestExportTopupLogsReturnsActualPaymentCopyText(t *testing.T) {
+func TestExportTopupLogsAppliesUserFiltersAndExcludesNonPayments(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.Log{}))
 
@@ -101,23 +101,58 @@ func TestExportTopupLogsReturnsActualPaymentCopyText(t *testing.T) {
 		Quota:     500_000,
 		Content:   "使用在线充值成功，充值金额: $1.000000 额度，支付金额：1.000000",
 	}).Error)
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    users[0].Id,
+		Username:  users[0].Username,
+		CreatedAt: createdAt + 1,
+		Type:      model.LogTypeTopup,
+		Quota:     5_000_000,
+		Content:   "通过兑换码充值 $10",
+		Other:     `{"admin_info":{"payment_method":"redemption","callback_payment_method":"redemption","payment_amount":10}}`,
+	}).Error)
+	require.NoError(t, db.Create(&model.Log{
+		UserId:    users[0].Id,
+		Username:  users[0].Username,
+		CreatedAt: createdAt + 1,
+		Type:      model.LogTypeTopup,
+		Quota:     5_000_000,
+		Content:   "充值成功，支付金额：0",
+		Other:     `{"payment_amount":0}`,
+	}).Error)
 
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(
-		http.MethodGet,
-		"/api/log/topup/export?start_timestamp=1699999999&end_timestamp=1700000001",
-		nil,
-	)
-
-	ExportTopupLogs(ctx)
-
-	require.Equal(t, http.StatusOK, recorder.Code)
 	firstDate := time.Unix(createdAt, 0).In(time.Local).Format("2006/01/02")
 	secondDate := time.Unix(createdAt+1, 0).In(time.Local).Format("2006/01/02")
-	require.Equal(
-		t,
-		fmt.Sprintf("alice\t$80\t%s\tfcy\nbob\t$1\t%s\t自有用户\n", firstDate, secondDate),
-		recorder.Body.String(),
-	)
+	testCases := []struct {
+		name     string
+		query    string
+		expected string
+	}{
+		{
+			name:     "user remark",
+			query:    "user_remark=fcy",
+			expected: fmt.Sprintf("alice\t$80\t%s\tfcy\n", firstDate),
+		},
+		{
+			name:     "username",
+			query:    "username=bob",
+			expected: fmt.Sprintf("bob\t$1\t%s\t自有用户\n", secondDate),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(
+				http.MethodGet,
+				"/api/log/topup/export?start_timestamp=1699999999&end_timestamp=1700000001&"+testCase.query,
+				nil,
+			)
+
+			ExportTopupLogs(ctx)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			assert.Equal(t, testCase.expected, recorder.Body.String())
+		})
+	}
 }

@@ -54,8 +54,10 @@ func ExportTopupLogs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid time range"})
 		return
 	}
+	username := c.Query("username")
+	userRemark := c.Query("user_remark")
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
-	logs, err := model.GetTopupLogsForExport(startTimestamp, endTimestamp, excludeAdmins)
+	logs, err := model.GetTopupLogsForExport(startTimestamp, endTimestamp, username, userRemark, excludeAdmins)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return

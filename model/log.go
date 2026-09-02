@@ -482,11 +482,24 @@ const TopupLogExportLimit = 100000
 
 // GetTopupLogsForExport returns top-up logs in the requested time range.
 // The hard limit keeps a single export from loading an unbounded log table.
-func GetTopupLogsForExport(startTimestamp int64, endTimestamp int64, excludeAdmins bool) (logs []*Log, err error) {
+func GetTopupLogsForExport(startTimestamp int64, endTimestamp int64, username string, userRemark string, excludeAdmins bool) (logs []*Log, err error) {
 	tx := LOG_DB.Model(&Log{}).
 		Select("user_id", "username", "created_at", "quota", "content", "type", "other").
 		Where("type = ?", LogTypeTopup)
 
+	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
+		return nil, err
+	}
+	if userRemark != "" {
+		var userIds []int
+		if err = DB.Unscoped().Model(&User{}).Where("remark LIKE ?", "%"+userRemark+"%").Pluck("id", &userIds).Error; err != nil {
+			return nil, err
+		}
+		if len(userIds) == 0 {
+			return []*Log{}, nil
+		}
+		tx = tx.Where("user_id IN ?", userIds)
+	}
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
 	}
