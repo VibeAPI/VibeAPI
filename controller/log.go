@@ -170,8 +170,10 @@ func GetLogsStat(c *gin.Context) {
 		channel = -1
 	}
 	group := c.Query("group")
+	requestId := c.Query("request_id")
+	upstreamRequestId := c.Query("upstream_request_id")
 	excludeAdmins, _ := strconv.ParseBool(c.Query("exclude_admins"))
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, userRemark, tokenName, channel, group, excludeAdmins)
+	stat, err := model.GetLogStat(logType, startTimestamp, endTimestamp, modelName, username, userRemark, tokenName, channel, group, requestId, upstreamRequestId, excludeAdmins)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -181,9 +183,10 @@ func GetLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":          stat.Quota,
+			"payment_amount": stat.PaymentAmount,
+			"rpm":            stat.Rpm,
+			"tpm":            stat.Tpm,
 		},
 	})
 	return
@@ -198,7 +201,9 @@ func GetLogsSelfStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, "", tokenName, channel, group, false)
+	requestId := c.Query("request_id")
+	upstreamRequestId := c.Query("upstream_request_id")
+	stat, err := model.GetLogStat(logType, startTimestamp, endTimestamp, modelName, username, "", tokenName, channel, group, requestId, upstreamRequestId, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -208,9 +213,10 @@ func GetLogsSelfStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
+			"quota":          stat.Quota,
+			"payment_amount": stat.PaymentAmount,
+			"rpm":            stat.Rpm,
+			"tpm":            stat.Tpm,
 			//"token": tokenNum,
 		},
 	})

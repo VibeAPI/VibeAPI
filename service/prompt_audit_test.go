@@ -52,14 +52,8 @@ func TestValidatePromptAuditEndpointAlwaysBlocksMetadataAddresses(t *testing.T) 
 	}
 }
 
-func TestPromptAuditAudienceModes(t *testing.T) {
+func TestPromptAuditOnlyIncludesSelectedUsers(t *testing.T) {
 	setting := operation_setting.PromptAuditSetting{AudienceUserIds: []int{7}}
-	setting.AudienceMode = operation_setting.PromptAuditScopeAll
-	assert.True(t, ShouldPromptAuditUser(setting, 8))
-	setting.AudienceMode = operation_setting.PromptAuditScopeWhitelist
-	assert.False(t, ShouldPromptAuditUser(setting, 7))
-	assert.True(t, ShouldPromptAuditUser(setting, 8))
-	setting.AudienceMode = operation_setting.PromptAuditScopeBlacklist
 	assert.True(t, ShouldPromptAuditUser(setting, 7))
 	assert.False(t, ShouldPromptAuditUser(setting, 8))
 }

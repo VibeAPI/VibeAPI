@@ -148,6 +148,15 @@ func TestGetTopupPaymentAmountSupportsStructuredAndLegacyLogs(t *testing.T) {
 			log:  &Log{Type: LogTypeTopup, Content: "通过兑换码充值 $10"},
 			ok:   false,
 		},
+		{
+			name: "redemption ignores an invalid structured payment amount",
+			log: &Log{
+				Type:    LogTypeTopup,
+				Content: "通过兑换码充值 $10",
+				Other:   `{"admin_info":{"payment_method":"redemption","callback_payment_method":"redemption","payment_amount":10},"payment_amount":10}`,
+			},
+			ok: false,
+		},
 	}
 
 	for _, testCase := range testCases {

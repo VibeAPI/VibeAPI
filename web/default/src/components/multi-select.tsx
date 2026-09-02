@@ -62,6 +62,8 @@ interface MultiSelectProps {
   id?: string
   /** Disable the entire control. */
   disabled?: boolean
+  /** Called when the combobox search text changes, for server-side search. */
+  onSearchChange?: (value: string) => void
   /**
    * Limits rendered chips while keeping all values selected.
    * Hidden values remain searchable/removable from the dropdown.
@@ -164,7 +166,7 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
 
   const addValues = React.useCallback(
@@ -185,6 +187,7 @@ export function MultiSelect(props: MultiSelectProps) {
   )
 
   const handleInputValueChange = (value: string) => {
+    props.onSearchChange?.(value)
     if (!props.allowCreate) {
       setInputValue(value)
       return

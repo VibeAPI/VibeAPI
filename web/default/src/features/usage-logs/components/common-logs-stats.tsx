@@ -21,11 +21,12 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
-import { DEFAULT_LOG_STATS } from '../constants'
+import { DEFAULT_LOG_STATS, LOG_TYPE_ENUM } from '../constants'
 import { buildApiParams } from '../lib/utils'
 import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
@@ -52,6 +53,7 @@ export function CommonLogsStats() {
   const { isAdminView: isAdmin } = useLogsViewScope()
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
+  const isTopup = searchParams.type?.[0] === String(LOG_TYPE_ENUM.TOPUP)
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['usage-logs-stats', isAdmin, searchParams],
@@ -79,8 +81,32 @@ export function CommonLogsStats() {
     return (
       <div className='flex items-center gap-2'>
         <Skeleton className='h-7 w-[150px] rounded-md' />
-        <Skeleton className='h-7 w-[100px] rounded-md' />
-        <Skeleton className='h-7 w-[120px] rounded-md' />
+        {!isTopup && (
+          <>
+            <Skeleton className='h-7 w-[100px] rounded-md' />
+            <Skeleton className='h-7 w-[120px] rounded-md' />
+          </>
+        )}
+      </div>
+    )
+  }
+
+  if (isTopup) {
+    return (
+      <div className='flex flex-wrap items-center gap-2'>
+        <StatBadge
+          label={t('Actual Amount')}
+          value={
+            sensitiveVisible
+              ? formatLocalCurrencyAmount(stats?.payment_amount || 0, {
+                  digitsLarge: 6,
+                  digitsSmall: 6,
+                  abbreviate: false,
+                })
+              : '••••'
+          }
+          accent='bg-cyan-500/70'
+        />
       </div>
     )
   }
