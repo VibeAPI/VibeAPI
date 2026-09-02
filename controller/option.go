@@ -3,14 +3,19 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -85,6 +90,9 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
+		if k == "theme.frontend" {
+			continue
+		}
 		value := common.Interface2String(v)
 		lowerKey := strings.ToLower(k)
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
@@ -170,6 +178,12 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
+	if option.Key == "TaskPublicAddress" && option.Value.(string) != "" {
+		if err := service.ValidateTaskArtifactBaseURL(option.Value.(string)); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
@@ -237,10 +251,10 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "theme.frontend":
-		if option.Value != "default" && option.Value != "classic" {
+		if option.Value != "default" {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无效的主题值，可选值：default（新版前端）、classic（经典前端）",
+				"message": "Classic 前端已移除，主题只能设置为 default",
 			})
 			return
 		}
@@ -253,29 +267,32 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
-	case "payment_setting.corporate_payment_allowed_groups":
-		var groups []string
-		if err = common.UnmarshalJsonStr(option.Value.(string), &groups); err != nil {
-			common.ApiErrorMsg(c, "对公支付可见分组配置无效")
+	case "gemini.safety_settings":
+		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
 			return
 		}
-		configuredGroups := ratio_setting.GetGroupRatioCopy()
-		seen := make(map[string]struct{}, len(groups))
-		for _, group := range groups {
-			group = strings.TrimSpace(group)
-			if group == "" {
-				common.ApiErrorMsg(c, "对公支付可见分组不能为空")
-				return
-			}
-			if _, ok := configuredGroups[group]; !ok {
-				common.ApiErrorMsg(c, "对公支付可见分组不存在: "+group)
-				return
-			}
-			if _, ok := seen[group]; ok {
-				common.ApiErrorMsg(c, "对公支付可见分组不能重复: "+group)
-				return
-			}
-			seen[group] = struct{}{}
+	case "claude.default_max_tokens":
+		err = model_setting.ValidateClaudeDefaultMaxTokens(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+	case operation_setting.ToolPriceOptionKey:
+		err = operation_setting.ValidateToolPricesJSON(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
 		}
 	case "ImageRatio":
 		err = ratio_setting.UpdateImageRatioByJSONString(option.Value.(string))
@@ -339,6 +356,36 @@ func UpdateOption(c *gin.Context) {
 				"message": err.Error(),
 			})
 			return
+		}
+	case "billing_setting.billing_expr":
+		expressions := make(map[string]string)
+		if err = common.UnmarshalJsonStr(option.Value.(string), &expressions); err != nil {
+			common.ApiErrorMsg(c, "计费表达式配置必须是模型到表达式的 JSON 对象: "+err.Error())
+			return
+		}
+		models := make([]string, 0, len(expressions))
+		for modelName := range expressions {
+			models = append(models, modelName)
+		}
+		sort.Strings(models)
+		generation := jsplugin.DefaultRegistry.Generation()
+		for _, modelName := range models {
+			expression := expressions[modelName]
+			if plugin, ok := generation.GetByModel(modelName); ok {
+				err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+			} else if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved {
+				if plugin, ok := generation.Get(target.PluginKey); ok {
+					err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+				} else {
+					err = billing_setting.SmokeTestExpr(expression)
+				}
+			} else {
+				err = billing_setting.SmokeTestExpr(expression)
+			}
+			if err != nil {
+				common.ApiErrorMsg(c, fmt.Sprintf("模型 %s 的计费表达式无效: %v", modelName, err))
+				return
+			}
 		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")

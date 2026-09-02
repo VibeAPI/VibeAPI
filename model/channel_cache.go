@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -20,16 +21,17 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 // channel2advancedCustomConfig caches parsed Advanced Custom (type 58) configs so
 // path-aware selection avoids re-parsing JSON per request. Refreshed on full sync.
-var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
+var channel2advancedCustomConfig map[int]*kitdto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		InvalidatePricingCache()
+		rebuildTaskAliasView()
 		return
 	}
 	newChannelId2channel := make(map[int]*Channel)
-	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
+	newChannel2advancedCustomConfig := make(map[int]*kitdto.AdvancedCustomConfig)
 	var channels []*Channel
 	DB.Find(&channels)
 	for _, channel := range channels {
@@ -100,6 +102,7 @@ func InitChannelCache() {
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
+	rebuildTaskAliasView()
 	common.SysLog("channels synced from database")
 }
 
@@ -111,44 +114,27 @@ func SyncChannelCache(frequency int) {
 	}
 }
 
-func GetRandomSatisfiedChannel(group string, model string, retry int, requestPath string, userId int) (*Channel, error) {
-	return GetRandomSatisfiedChannelFiltered(group, model, retry, requestPath, userId, nil)
-}
-
-func GetRandomSatisfiedChannelFiltered(group string, model string, retry int, requestPath string, userId int, allow func(*Channel) bool) (*Channel, error) {
+func GetRandomSatisfiedChannel(
+	group string,
+	model string,
+	retry int,
+	filters []dto.ChannelFilter,
+) (*Channel, error) {
 	// if memory cache is disabled, get channel directly from database
 	if !common.MemoryCacheEnabled {
-		if allow == nil {
-			return GetChannel(group, model, retry, requestPath, userId)
-		}
-		return getChannelFiltered(group, model, retry, requestPath, userId, func(channelId int, priority int64) bool {
-			channel, err := GetChannelById(channelId, true)
-			return err == nil && channel != nil && allow(channel)
-		})
+		return GetChannel(group, model, retry, filters)
 	}
 
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
 	// First, try to find channels with the exact model name.
-	channels := filterChannelsByRequestPathAndModel(group2model2channels[group][model], requestPath, model)
-	channels = filterChannelsByUser(channels, userId)
+	channels, _ := filterCandidateIDs(group2model2channels[group][model], model, filters)
 
 	// If no channels found, try to find channels with the normalized model name.
 	if len(channels) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(model)
-		channels = filterChannelsByRequestPathAndModel(group2model2channels[group][normalizedModel], requestPath, model)
-		channels = filterChannelsByUser(channels, userId)
-	}
-	if allow != nil {
-		filtered := make([]int, 0, len(channels))
-		for _, channelId := range channels {
-			channel, ok := channelsIDM[channelId]
-			if ok && allow(channel) {
-				filtered = append(filtered, channelId)
-			}
-		}
-		channels = filtered
+		channels, _ = filterCandidateIDs(group2model2channels[group][normalizedModel], model, filters)
 	}
 
 	if len(channels) == 0 {
@@ -230,11 +216,40 @@ func GetRandomSatisfiedChannelFiltered(group string, model string, retry int, re
 	return nil, errors.New("channel not found")
 }
 
-func GetRandomUnprotectedChannel(group string, model string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
-	allow := func(channel *Channel) bool {
-		return IsPromptAuditFallbackChannel(channel, maxPriority, protected)
+// GetRandomUnprotectedChannel selects a prompt-audit fallback from the memory
+// cache while preserving the shared channel-constraint predicate.
+func GetRandomUnprotectedChannel(group string, modelName string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
+	if !common.MemoryCacheEnabled {
+		return GetUnprotectedChannel(group, modelName, requestPath, userId, maxPriority, protected)
 	}
-	return GetRandomSatisfiedChannelFiltered(group, model, 0, requestPath, userId, allow)
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+
+	filters := []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: requestPath}}
+	candidateIDs, _ := filterCandidateIDs(group2model2channels[group][modelName], modelName, filters)
+	if len(candidateIDs) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
+		candidateIDs, _ = filterCandidateIDs(group2model2channels[group][normalizedModel], modelName, filters)
+	}
+	targets := make([]*Channel, 0, len(candidateIDs))
+	for _, channelID := range candidateIDs {
+		channel := channelsIDM[channelID]
+		if channel == nil || channel.GetOtherSettings().IsUserBlacklisted(userId) || !IsPromptAuditFallbackChannel(channel, maxPriority, protected) {
+			continue
+		}
+		targets = append(targets, channel)
+	}
+	if len(targets) == 0 {
+		return nil, nil
+	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i].GetPriority() > targets[j].GetPriority() })
+	targetPriority := targets[0].GetPriority()
+	for _, channel := range targets {
+		if channel.GetPriority() == targetPriority {
+			return channel, nil
+		}
+	}
+	return nil, nil
 }
 
 func IsPromptAuditFallbackChannel(channel *Channel, maxPriority int64, protected map[int]struct{}) bool {
@@ -243,50 +258,6 @@ func IsPromptAuditFallbackChannel(channel *Channel, maxPriority int64, protected
 	}
 	_, blocked := protected[channel.Id]
 	return !blocked
-}
-
-// filterChannelsByUser removes channels that explicitly block the requesting
-// user. Caller must hold channelSyncLock (read lock).
-func filterChannelsByUser(channels []int, userId int) []int {
-	if userId <= 0 || len(channels) == 0 {
-		return channels
-	}
-	filtered := make([]int, 0, len(channels))
-	for _, channelId := range channels {
-		channel, ok := channelsIDM[channelId]
-		if !ok || !channel.GetOtherSettings().IsUserBlacklisted(userId) {
-			filtered = append(filtered, channelId)
-		}
-	}
-	return filtered
-}
-
-// filterChannelsByRequestPathAndModel restricts candidates by request path and
-// model. Only Advanced Custom (type 58) channels are path-checked: they are kept
-// only when one of their configured routes matches requestPath and model. All
-// other channel types always pass. When requestPath is empty, filtering is skipped.
-// Caller must hold channelSyncLock (read lock). The cached slice is never mutated.
-func filterChannelsByRequestPathAndModel(channels []int, requestPath string, model string) []int {
-	if requestPath == "" || len(channels) == 0 {
-		return channels
-	}
-	filtered := make([]int, 0, len(channels))
-	for _, channelId := range channels {
-		channel, ok := channelsIDM[channelId]
-		if !ok {
-			// keep it so the downstream consistency error is raised as before
-			filtered = append(filtered, channelId)
-			continue
-		}
-		if channel.Type != constant.ChannelTypeAdvancedCustom {
-			filtered = append(filtered, channelId)
-			continue
-		}
-		if config := channel2advancedCustomConfig[channelId]; config != nil && config.SupportsPathForModel(requestPath, model) {
-			filtered = append(filtered, channelId)
-		}
-	}
-	return filtered
 }
 
 func CacheGetChannel(id int) (*Channel, error) {
@@ -364,7 +335,7 @@ func CacheUpdateChannel(channel *Channel) {
 	}
 	channelsIDM[channel.Id] = channel
 	if channel2advancedCustomConfig == nil {
-		channel2advancedCustomConfig = make(map[int]*dto.AdvancedCustomConfig)
+		channel2advancedCustomConfig = make(map[int]*kitdto.AdvancedCustomConfig)
 	}
 	delete(channel2advancedCustomConfig, channel.Id)
 	if channel.Type == constant.ChannelTypeAdvancedCustom {

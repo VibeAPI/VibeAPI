@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +34,7 @@ func insertChannelBlacklistCandidate(t *testing.T, id int, priority int64, black
 		Group:    "default",
 		Priority: &priority,
 	}
-	channel.SetOtherSettings(dto.ChannelOtherSettings{BlacklistUserIds: blacklist})
+	channel.SetOtherSettings(kitdto.ChannelOtherSettings{BlacklistUserIds: blacklist})
 	require.NoError(t, DB.Create(channel).Error)
 	require.NoError(t, channel.AddAbilities(nil))
 }
@@ -43,12 +44,14 @@ func TestGetChannelFallsBackAfterUserBlacklist(t *testing.T) {
 	insertChannelBlacklistCandidate(t, 901, 10, []int{42})
 	insertChannelBlacklistCandidate(t, 902, 5, nil)
 
-	channel, err := GetChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	filters := []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}, {Kind: dto.FilterUserBlacklist, UserId: 42}}
+	channel, err := GetChannel("default", "gpt-test", 0, filters)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 902, channel.Id)
 
-	channel, err = GetChannel("default", "gpt-test", 0, "/v1/chat/completions", 7)
+	filters[1].UserId = 7
+	channel, err = GetChannel("default", "gpt-test", 0, filters)
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 901, channel.Id)
@@ -66,7 +69,7 @@ func TestCachedChannelSelectionFallsBackAfterUserBlacklist(t *testing.T) {
 	insertChannelBlacklistCandidate(t, 904, 5, nil)
 	InitChannelCache()
 
-	channel, err := GetRandomSatisfiedChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	channel, err := GetRandomSatisfiedChannel("default", "gpt-test", 0, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}, {Kind: dto.FilterUserBlacklist, UserId: 42}})
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 904, channel.Id)
@@ -100,7 +103,7 @@ func TestUpdateChannelBlacklistsPreservesSettingsAndRefreshesSelection(t *testin
 	assert.True(t, settings.DisableStore)
 	assert.Equal(t, []int{7, 42}, settings.BlacklistUserIds)
 
-	channel, err := GetRandomSatisfiedChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	channel, err := GetRandomSatisfiedChannel("default", "gpt-test", 0, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}, {Kind: dto.FilterUserBlacklist, UserId: 42}})
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 910, channel.Id)
@@ -109,7 +112,7 @@ func TestUpdateChannelBlacklistsPreservesSettingsAndRefreshesSelection(t *testin
 	require.NoError(t, DB.First(&updated, "id = ?", 909).Error)
 	assert.Equal(t, []int{7}, updated.GetOtherSettings().BlacklistUserIds)
 
-	channel, err = GetRandomSatisfiedChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	channel, err = GetRandomSatisfiedChannel("default", "gpt-test", 0, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}, {Kind: dto.FilterUserBlacklist, UserId: 42}})
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 909, channel.Id)
@@ -158,7 +161,7 @@ func TestGetChannelUsesNormalizedModelAfterExactCandidatesAreBlacklisted(t *test
 		Group:    "default",
 		Priority: &exactPriority,
 	}
-	exact.SetOtherSettings(dto.ChannelOtherSettings{BlacklistUserIds: []int{42}})
+	exact.SetOtherSettings(kitdto.ChannelOtherSettings{BlacklistUserIds: []int{42}})
 	require.NoError(t, DB.Create(exact).Error)
 	require.NoError(t, exact.AddAbilities(nil))
 
@@ -176,7 +179,7 @@ func TestGetChannelUsesNormalizedModelAfterExactCandidatesAreBlacklisted(t *test
 	require.NoError(t, DB.Create(normalized).Error)
 	require.NoError(t, normalized.AddAbilities(nil))
 
-	channel, err := GetChannel("default", "gpt-4-gizmo-customer", 0, "/v1/chat/completions", 42)
+	channel, err := GetChannel("default", "gpt-4-gizmo-customer", 0, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}, {Kind: dto.FilterUserBlacklist, UserId: 42}})
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 906, channel.Id)
@@ -214,7 +217,7 @@ func TestGetChannelTreatsNilPriorityAsZero(t *testing.T) {
 		Priority:  nil,
 	}).Error)
 
-	channel, err := GetChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	channel, err := GetChannel("default", "gpt-test", 0, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: "/v1/chat/completions"}})
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	assert.Equal(t, 907, channel.Id)
