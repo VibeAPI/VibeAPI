@@ -98,37 +98,36 @@ export type PromptAuditSettings = {
   enabled: boolean
   mode: 'downgrade' | 'reject'
   protected_channel_ids: number[]
-  audience_mode: 'all' | 'whitelist' | 'blacklist'
   audience_user_ids: number[]
   content_scope: 'latest' | 'latest_tools' | 'all'
   max_characters: number
   main_threshold: number
-  review_threshold: number
-  review_enabled: boolean
-  required_valid_votes: number
-  required_flagged_votes: number
-  review_total_timeout_seconds: number
   allow_private_endpoints: boolean
-  first_restriction_hours: number
-  second_restriction_hours: number
-  violation_reset_days: number
-  dedupe_minutes: number
-  retention_days: number
   reject_message: string
-  appeal_contact: string
   version: number
   tested_version: number
   main_tested_version: number
-  review_tested_version: number
   main: PromptAuditEndpointSetting
-  review: PromptAuditEndpointSetting
+  restricted_users: PromptAuditBlacklistUser[]
+  protected_channel_count: number
 }
 
 export async function getPromptAuditSettings() {
   const res = await api.get<{
     success: boolean
     message: string
-    data?: PromptAuditSettings
+    data?: Omit<
+      PromptAuditSettings,
+      | 'protected_channel_ids'
+      | 'audience_user_ids'
+      | 'restricted_users'
+      | 'protected_channel_count'
+    > & {
+      protected_channel_ids?: number[] | null
+      audience_user_ids?: number[] | null
+      restricted_users?: PromptAuditBlacklistUser[] | null
+      protected_channel_count?: number | null
+    }
   }>('/api/option/prompt-audit', {
     skipBusinessError: true,
     skipErrorHandler: true,
@@ -136,10 +135,21 @@ export async function getPromptAuditSettings() {
   if (!res.data.success || !res.data.data) {
     throw new Error(res.data.message || 'Failed to load prompt audit settings')
   }
-  return res.data.data
+  return {
+    ...res.data.data,
+    protected_channel_ids: res.data.data.protected_channel_ids ?? [],
+    audience_user_ids: res.data.data.audience_user_ids ?? [],
+    restricted_users: res.data.data.restricted_users ?? [],
+    protected_channel_count: res.data.data.protected_channel_count ?? 0,
+  }
 }
 
-export async function updatePromptAuditSettings(request: PromptAuditSettings) {
+export async function updatePromptAuditSettings(
+  request: Omit<
+    PromptAuditSettings,
+    'restricted_users' | 'protected_channel_count'
+  >
+) {
   const res = await api.put<UpdateOptionResponse>(
     '/api/option/prompt-audit',
     request,
@@ -149,12 +159,11 @@ export async function updatePromptAuditSettings(request: PromptAuditSettings) {
 }
 
 export async function testPromptAuditSettings(
-  stage: 'main' | 'review',
   content: string
 ) {
   const res = await api.post<UpdateOptionResponse>(
     '/api/option/prompt-audit/test',
-    { stage, content },
+    { stage: 'main', content },
     { skipBusinessError: true, skipErrorHandler: true }
   )
   return res.data
@@ -169,48 +178,18 @@ export async function setPromptAuditEnabled(enabled: boolean) {
   return res.data
 }
 
-export type PromptAuditEvent = {
-  event_id: string
+export type PromptAuditBlacklistUser = {
   user_id: number
-  request_id: string
-  status: 'pending' | 'safe' | 'violation' | 'failed'
-  categories: string
-  main_confidence: number
-  valid_votes: number
-  flagged_votes: number
-  origin_channel_id: number
-  final_channel_id: number
-  content_truncated: boolean
-  failure_type: string
-  latency_ms: number
-  email_status: string
-  email_error: string
-  created_at: number
+  username: string
+  display_name: string
+  email: string
+  remark: string
+  channel_count: number
 }
 
-export async function getPromptAuditEvents(status = '') {
-  const res = await api.get<{
-    success: boolean
-    message: string
-    data?: { items: PromptAuditEvent[]; total: number }
-  }>('/api/option/prompt-audit/events', { params: { status, page_size: 50 } })
-  return res.data
-}
-
-export async function clearPromptAuditRestriction(
-  userId: number,
-  resetCount: boolean
-) {
-  const res = await api.post<UpdateOptionResponse>(
-    '/api/option/prompt-audit/restriction/clear',
-    { user_id: userId, reset_count: resetCount }
-  )
-  return res.data
-}
-
-export async function resendPromptAuditEmail(eventId: string) {
-  const res = await api.post<UpdateOptionResponse>(
-    `/api/option/prompt-audit/events/${eventId}/resend-email`
+export async function removePromptAuditBlacklistUser(userId: number) {
+  const res = await api.delete<UpdateOptionResponse>(
+    `/api/option/prompt-audit/restricted-users/${userId}`
   )
   return res.data
 }

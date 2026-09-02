@@ -72,6 +72,79 @@ func TestCachedChannelSelectionFallsBackAfterUserBlacklist(t *testing.T) {
 	assert.Equal(t, 904, channel.Id)
 }
 
+func TestUpdateChannelBlacklistsPreservesSettingsAndRefreshesSelection(t *testing.T) {
+	resetChannelBlacklistTestTables(t)
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = true
+	t.Cleanup(func() {
+		common.MemoryCacheEnabled = originalMemoryCacheEnabled
+		InitChannelCache()
+	})
+	insertChannelBlacklistCandidate(t, 909, 10, []int{7})
+	insertChannelBlacklistCandidate(t, 910, 5, []int{8})
+
+	var protected Channel
+	require.NoError(t, DB.First(&protected, "id = ?", 909).Error)
+	protectedSettings := protected.GetOtherSettings()
+	protectedSettings.DisableStore = true
+	protected.SetOtherSettings(protectedSettings)
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", protected.Id).Update("settings", protected.OtherSettings).Error)
+	InitChannelCache()
+
+	require.NoError(t, AddUserToChannelBlacklists([]int{909, 909}, 42))
+	require.NoError(t, AddUserToChannelBlacklists([]int{909}, 42))
+
+	var updated Channel
+	require.NoError(t, DB.First(&updated, "id = ?", 909).Error)
+	settings := updated.GetOtherSettings()
+	assert.True(t, settings.DisableStore)
+	assert.Equal(t, []int{7, 42}, settings.BlacklistUserIds)
+
+	channel, err := GetRandomSatisfiedChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 910, channel.Id)
+
+	require.NoError(t, RemoveUserFromChannelBlacklists([]int{909, 910}, 42))
+	require.NoError(t, DB.First(&updated, "id = ?", 909).Error)
+	assert.Equal(t, []int{7}, updated.GetOtherSettings().BlacklistUserIds)
+
+	channel, err = GetRandomSatisfiedChannel("default", "gpt-test", 0, "/v1/chat/completions", 42)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	assert.Equal(t, 909, channel.Id)
+}
+
+func TestAddUserToChannelBlacklistsRollsBackWhenAChannelIsMissing(t *testing.T) {
+	resetChannelBlacklistTestTables(t)
+	insertChannelBlacklistCandidate(t, 911, 10, []int{7})
+
+	err := AddUserToChannelBlacklists([]int{911, 999999}, 42)
+	require.Error(t, err)
+
+	var channel Channel
+	require.NoError(t, DB.First(&channel, "id = ?", 911).Error)
+	assert.Equal(t, []int{7}, channel.GetOtherSettings().BlacklistUserIds)
+}
+
+func TestListChannelBlacklistUsersReturnsUnionAndChannelCounts(t *testing.T) {
+	resetChannelBlacklistTestTables(t)
+	insertChannelBlacklistCandidate(t, 912, 10, []int{41, 42})
+	insertChannelBlacklistCandidate(t, 913, 5, []int{42, 43})
+	require.NoError(t, DB.Create(&User{Id: 42, Username: "audited-user", DisplayName: "Audited User", Email: "audit@example.com", Remark: "manual review"}).Error)
+
+	users, err := ListChannelBlacklistUsers([]int{912, 913})
+	require.NoError(t, err)
+	require.Len(t, users, 3)
+	assert.Equal(t, []int{41, 42, 43}, []int{users[0].UserId, users[1].UserId, users[2].UserId})
+	assert.Equal(t, 1, users[0].ChannelCount)
+	assert.Equal(t, 2, users[1].ChannelCount)
+	assert.Equal(t, "audited-user", users[1].Username)
+	assert.Equal(t, "audit@example.com", users[1].Email)
+	assert.Equal(t, "manual review", users[1].Remark)
+	assert.Equal(t, 1, users[2].ChannelCount)
+}
+
 func TestGetChannelUsesNormalizedModelAfterExactCandidatesAreBlacklisted(t *testing.T) {
 	resetChannelBlacklistTestTables(t)
 	exactPriority := int64(10)

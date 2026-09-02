@@ -213,9 +213,8 @@ func SetApiRouter(router *gin.Engine) {
 			optionRoute.POST("/prompt-audit/test", controller.TestPromptAuditSettings)
 			optionRoute.POST("/prompt-audit/enable", controller.EnablePromptAudit)
 			optionRoute.POST("/prompt-audit/disable", controller.DisablePromptAudit)
-			optionRoute.GET("/prompt-audit/events", controller.ListPromptAuditEvents)
-			optionRoute.POST("/prompt-audit/restriction/clear", controller.ClearPromptAuditUserRestriction)
-			optionRoute.POST("/prompt-audit/events/:event_id/resend-email", controller.ResendPromptAuditEmail)
+			optionRoute.GET("/prompt-audit/restricted-users", controller.ListPromptAuditBlacklist)
+			optionRoute.DELETE("/prompt-audit/restricted-users/:user_id", controller.RemovePromptAuditBlacklistUser)
 		}
 
 		upstreamBalanceRoute := apiRouter.Group("/upstream-balances")

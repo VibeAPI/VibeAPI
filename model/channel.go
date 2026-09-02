@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sort"
 	"strings"
 	"sync"
 
@@ -421,6 +422,145 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 		return nil, err
 	}
 	return channel, nil
+}
+
+// AddUserToChannelBlacklists persists a user in every selected channel's
+// existing blacklist. The transaction prevents a partial restriction when a
+// channel is missing or its blacklist has reached the configured limit.
+func AddUserToChannelBlacklists(channelIds []int, userId int) error {
+	return updateChannelBlacklists(channelIds, userId, true)
+}
+
+// RemoveUserFromChannelBlacklists releases a user from every selected channel.
+func RemoveUserFromChannelBlacklists(channelIds []int, userId int) error {
+	return updateChannelBlacklists(channelIds, userId, false)
+}
+
+func updateChannelBlacklists(channelIds []int, userId int, add bool) error {
+	if userId <= 0 {
+		return errors.New("user ID must be positive")
+	}
+	uniqueChannelIds := make([]int, 0, len(channelIds))
+	seenChannelIds := make(map[int]struct{}, len(channelIds))
+	for _, channelId := range channelIds {
+		if channelId <= 0 {
+			return errors.New("channel IDs must be positive")
+		}
+		if _, exists := seenChannelIds[channelId]; exists {
+			continue
+		}
+		seenChannelIds[channelId] = struct{}{}
+		uniqueChannelIds = append(uniqueChannelIds, channelId)
+	}
+	if len(uniqueChannelIds) == 0 {
+		return errors.New("at least one channel is required")
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var channels []Channel
+		query := lockForUpdate(tx.Where("id IN ?", uniqueChannelIds).Order("id ASC"))
+		if err := query.Find(&channels).Error; err != nil {
+			return err
+		}
+		if len(channels) != len(uniqueChannelIds) {
+			return errors.New("one or more protected channels no longer exist")
+		}
+		for i := range channels {
+			settings := dto.ChannelOtherSettings{}
+			if strings.TrimSpace(channels[i].OtherSettings) != "" {
+				if err := common.UnmarshalJsonStr(channels[i].OtherSettings, &settings); err != nil {
+					return fmt.Errorf("channel %d has invalid settings: %w", channels[i].Id, err)
+				}
+			}
+			blacklist := make([]int, 0, len(settings.BlacklistUserIds)+1)
+			listed := false
+			for _, blacklistedUserId := range settings.BlacklistUserIds {
+				if blacklistedUserId == userId {
+					listed = true
+					if !add {
+						continue
+					}
+				}
+				blacklist = append(blacklist, blacklistedUserId)
+			}
+			if add && !listed {
+				blacklist = append(blacklist, userId)
+			}
+			settings.BlacklistUserIds = blacklist
+			if err := settings.ValidateBlacklistUserIds(); err != nil {
+				return fmt.Errorf("channel %d: %w", channels[i].Id, err)
+			}
+			encoded, err := common.Marshal(settings)
+			if err != nil {
+				return err
+			}
+			if err := tx.Model(&Channel{}).Where("id = ?", channels[i].Id).Update("settings", string(encoded)).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	InitChannelCache()
+	return nil
+}
+
+type ChannelBlacklistUser struct {
+	UserId       int    `json:"user_id"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"display_name"`
+	Email        string `json:"email"`
+	Remark       string `json:"remark"`
+	ChannelCount int    `json:"channel_count"`
+}
+
+func ListChannelBlacklistUsers(channelIds []int) ([]ChannelBlacklistUser, error) {
+	if len(channelIds) == 0 {
+		return []ChannelBlacklistUser{}, nil
+	}
+	var channels []Channel
+	if err := DB.Select("id", "settings").Where("id IN ?", channelIds).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	channelCounts := make(map[int]int)
+	for _, channel := range channels {
+		settings := dto.ChannelOtherSettings{}
+		if strings.TrimSpace(channel.OtherSettings) != "" {
+			if err := common.UnmarshalJsonStr(channel.OtherSettings, &settings); err != nil {
+				return nil, fmt.Errorf("channel %d has invalid settings: %w", channel.Id, err)
+			}
+		}
+		for _, userId := range settings.BlacklistUserIds {
+			channelCounts[userId]++
+		}
+	}
+	userIds := make([]int, 0, len(channelCounts))
+	for userId := range channelCounts {
+		userIds = append(userIds, userId)
+	}
+	sort.Ints(userIds)
+	if len(userIds) == 0 {
+		return []ChannelBlacklistUser{}, nil
+	}
+	var users []User
+	if err := DB.Unscoped().Select("id", "username", "display_name", "email", "remark").Where("id IN ?", userIds).Find(&users).Error; err != nil {
+		return nil, err
+	}
+	userById := make(map[int]User, len(users))
+	for _, user := range users {
+		userById[user.Id] = user
+	}
+	result := make([]ChannelBlacklistUser, 0, len(userIds))
+	for _, userId := range userIds {
+		user := userById[userId]
+		result = append(result, ChannelBlacklistUser{
+			UserId: userId, Username: user.Username, DisplayName: user.DisplayName,
+			Email: user.Email, Remark: user.Remark, ChannelCount: channelCounts[userId],
+		})
+	}
+	return result, nil
 }
 
 func BatchInsertChannels(channels []Channel) error {
