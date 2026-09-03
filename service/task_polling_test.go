@@ -3,19 +3,20 @@ package service
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,6 +33,30 @@ type taskPollingFetchAdaptor struct {
 	blockStarted   chan struct{}
 	releaseBlock   chan struct{}
 	blockOnce      sync.Once
+}
+
+type batchPollingAdaptor struct {
+	taskPollingFetchAdaptor
+	batchCalls int
+	batchIDs   []string
+	results    map[string]*BatchTaskResult
+}
+
+func (a *batchPollingAdaptor) FetchMode() string { return "batch" }
+func (a *batchPollingAdaptor) FetchBatchTasks(_ string, _ string, taskIDs []string, _ string) (*http.Response, error) {
+	a.batchCalls++
+	a.batchIDs = append([]string(nil), taskIDs...)
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader([]byte(`{}`)))}, nil
+}
+func (a *batchPollingAdaptor) ParseBatchResult([]byte) (map[string]*BatchTaskResult, error) {
+	if a.results != nil {
+		return a.results, nil
+	}
+	results := make(map[string]*BatchTaskResult, len(a.batchIDs))
+	for _, taskID := range a.batchIDs {
+		results[taskID] = &BatchTaskResult{TaskInfo: relaycommon.TaskInfo{TaskID: taskID, Status: model.TaskStatusInProgress, Url: "https://example.com/result"}}
+	}
+	return results, nil
 }
 
 func (a *taskPollingFetchAdaptor) Init(_ *relaycommon.RelayInfo) {}
@@ -61,7 +86,7 @@ func (a *taskPollingFetchAdaptor) FetchTask(_ string, _ string, body map[string]
 	if result == nil {
 		result = &relaycommon.TaskInfo{Status: model.TaskStatusInProgress, Progress: "30%"}
 	}
-	response := dto.TaskResponse[model.Task]{Code: dto.TaskSuccessCode}
+	response := taskdto.TaskResponse[model.Task]{Code: taskdto.TaskSuccessCode}
 	response.Data.TaskID = taskID
 	response.Data.Status = model.TaskStatus(result.Status)
 	response.Data.Progress = result.Progress
@@ -104,6 +129,43 @@ func (a *taskPollingFetchAdaptor) fetchedTaskIDs() []string {
 	return append([]string(nil), a.taskIDs...)
 }
 
+func TestRedactVideoResponseBodyPreservesPollingPayloadShape(t *testing.T) {
+	rawVideo := strings.Repeat("a", 300)
+	body, err := common.Marshal(map[string]any{
+		"done": true,
+		"name": "operations/provider-task",
+		"response": map[string]any{
+			"bytesBase64Encoded": "secret-bytes",
+			"video":              rawVideo,
+			"videos": []any{
+				map[string]any{
+					"bytesBase64Encoded": "other-secret-bytes",
+					"mimeType":           "video/mp4",
+					"uri":                "https://media.example/video.mp4",
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	var stored map[string]any
+	require.NoError(t, common.Unmarshal(redactVideoResponseBody(body), &stored))
+	assert.Equal(t, true, stored["done"])
+	assert.Equal(t, "operations/provider-task", stored["name"])
+	response, ok := stored["response"].(map[string]any)
+	require.True(t, ok)
+	assert.NotContains(t, response, "bytesBase64Encoded")
+	assert.Equal(t, strings.Repeat("a", 256)+"...", response["video"])
+	videos, ok := response["videos"].([]any)
+	require.True(t, ok)
+	require.Len(t, videos, 1)
+	video, ok := videos[0].(map[string]any)
+	require.True(t, ok)
+	assert.NotContains(t, video, "bytesBase64Encoded")
+	assert.Equal(t, "video/mp4", video["mimeType"])
+	assert.Equal(t, "https://media.example/video.mp4", video["uri"])
+}
+
 func seedTaskPollingChannel(t *testing.T, id int, disableSleep bool) {
 	t.Helper()
 	ch := &model.Channel{
@@ -126,7 +188,7 @@ func seedPollingTask(t *testing.T, channelID int, publicID string, upstreamID st
 		Platform:  constant.TaskPlatform("kling"),
 		UserId:    1,
 		ChannelId: channelID,
-		Action:    constant.TaskActionGenerate,
+		Action:    constant.TaskActionImageToVideo,
 		Status:    model.TaskStatusInProgress,
 		Progress:  "30%",
 		CreatedAt: time.Now().Unix(),
@@ -167,6 +229,201 @@ func TestUpdateVideoTasksDefaultSleepWaitsBetweenTasks(t *testing.T) {
 
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Equal(t, 1, adaptor.fetchCount())
+}
+
+func TestDispatchPlatformUpdateUsesFetchMode(t *testing.T) {
+	truncate(t)
+	const channelID = 109
+	seedTaskPollingChannel(t, channelID, true)
+	task := seedPollingTask(t, channelID, "task_batch", "upstream_batch")
+	taskChannels := map[int][]string{channelID: {task.GetUpstreamTaskID()}}
+	tasks := map[string]*model.Task{task.GetUpstreamTaskID(): task}
+
+	batch := &batchPollingAdaptor{}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return batch }
+	DispatchPlatformUpdate(context.Background(), "batch-plugin", taskChannels, tasks)
+	assert.Equal(t, 1, batch.batchCalls)
+	assert.Equal(t, 0, batch.fetchCount())
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.Equal(t, "https://example.com/result", persisted.GetResultURL())
+
+	perTask := &taskPollingFetchAdaptor{}
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return perTask }
+	DispatchPlatformUpdate(context.Background(), "per-task-plugin", taskChannels, tasks)
+	assert.Equal(t, 1, perTask.fetchCount())
+
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return nil }
+	assert.NotPanics(t, func() { DispatchPlatformUpdate(context.Background(), "missing-plugin", taskChannels, tasks) })
+	GetTaskAdaptorFunc = previousFactory
+}
+
+func TestUpdateBatchTasksSettlesTieredUsageForTerminalStates(t *testing.T) {
+	testCases := []struct {
+		name        string
+		status      model.TaskStatus
+		units       float64
+		actualQuota int
+	}{
+		{name: "success with usage", status: model.TaskStatusSuccess, units: 3, actualQuota: 3_000},
+		{name: "failure with usage", status: model.TaskStatusFailure, units: 3, actualQuota: 0},
+		{name: "success with zero usage", status: model.TaskStatusSuccess, units: 0, actualQuota: 0},
+		{name: "failure with zero usage", status: model.TaskStatusFailure, units: 0, actualQuota: 0},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncate(t)
+
+			const userID, tokenID, channelID = 41, 41, 141
+			const initialQuota, preConsumedQuota = 10_000, 5_000
+			const tokenRemain = 8_000
+			seedUser(t, userID, initialQuota)
+			seedToken(t, tokenID, userID, "sk-batch-tiered", tokenRemain)
+			seedTaskPollingChannel(t, channelID, true)
+
+			expression := `tier("actual", u("units"))`
+			task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet, 0)
+			task.TaskID = "task_batch_tiered_" + string(testCase.status)
+			task.Platform = "batch-plugin"
+			task.PrivateData.UpstreamTaskID = "upstream_batch_tiered_" + string(testCase.status)
+			task.SetData(map[string]any{"provider_payload": "must-be-preserved"})
+			task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+				ExprString:       expression,
+				ExprHash:         billingexpr.ExprHashString(expression),
+				GroupRatio:       1,
+				QuotaPerUnit:     1_000,
+				ExprVersion:      1,
+				TaskUsageBilling: true,
+			}
+			require.NoError(t, model.DB.Create(task).Error)
+
+			upstreamID := task.GetUpstreamTaskID()
+			reason := ""
+			if testCase.status == model.TaskStatusFailure {
+				reason = "upstream failed"
+			}
+			result := &BatchTaskResult{TaskInfo: relaycommon.TaskInfo{
+				TaskID:     upstreamID,
+				Status:     string(testCase.status),
+				Reason:     reason,
+				UsageFacts: map[string]any{"units": testCase.units},
+			}}
+			adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{upstreamID: result}}
+			taskIDs := []string{upstreamID}
+			taskMap := map[string]*model.Task{upstreamID: task}
+
+			require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: taskIDs}, taskMap))
+
+			var persisted model.Task
+			require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+			assert.Equal(t, testCase.status, persisted.Status)
+			assert.Equal(t, testCase.actualQuota, persisted.Quota)
+			var persistedData map[string]any
+			require.NoError(t, common.Unmarshal(persisted.Data, &persistedData))
+			assert.Equal(t, "must-be-preserved", persistedData["provider_payload"])
+			assert.Equal(t, initialQuota+(preConsumedQuota-testCase.actualQuota), getUserQuota(t, userID))
+			assert.Equal(t, tokenRemain+(preConsumedQuota-testCase.actualQuota), getTokenRemainQuota(t, tokenID))
+			assert.Equal(t, int64(1), countLogs(t))
+			if testCase.status == model.TaskStatusFailure {
+				log := getLastLog(t)
+				require.NotNil(t, log)
+				assert.Equal(t, model.LogTypeRefund, log.Type)
+			}
+
+			// A duplicate terminal response must not settle the same task twice.
+			require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: taskIDs}, taskMap))
+			assert.Equal(t, initialQuota+(preConsumedQuota-testCase.actualQuota), getUserQuota(t, userID))
+			assert.Equal(t, int64(1), countLogs(t))
+		})
+	}
+}
+
+func TestUpdateBatchTasksRefundsFailedTieredTask(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID, channelID = 43, 43, 143
+	const initialQuota, preConsumedQuota, tokenRemain = 10_000, 5_000, 8_000
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, "sk-batch-tiered-refund", tokenRemain)
+	seedTaskPollingChannel(t, channelID, true)
+
+	expression := `tier("actual", u("units"))`
+	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_batch_tiered_refund"
+	task.Platform = "batch-plugin"
+	task.PrivateData.UpstreamTaskID = "upstream_batch_tiered_refund"
+	task.PrivateData.BillingContext.TieredSnapshot = &billingexpr.BillingSnapshot{
+		ExprString:       expression,
+		ExprHash:         billingexpr.ExprHashString(expression),
+		GroupRatio:       1,
+		QuotaPerUnit:     1_000,
+		ExprVersion:      1,
+		TaskUsageBilling: true,
+		UsageFacts:       map[string]any{"units": float64(5)},
+		EstimatedTier:    "actual",
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+
+	upstreamID := task.GetUpstreamTaskID()
+	adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{
+		upstreamID: {TaskInfo: relaycommon.TaskInfo{
+			TaskID:     upstreamID,
+			Status:     model.TaskStatusFailure,
+			Reason:     "upstream failed",
+			UsageFacts: map[string]any{"units": float64(5)},
+		}},
+	}}
+	require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: {upstreamID}}, map[string]*model.Task{upstreamID: task}))
+
+	var persisted model.Task
+	require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
+	assert.Zero(t, persisted.Quota)
+	assert.Equal(t, initialQuota+preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+preConsumedQuota, getTokenRemainQuota(t, tokenID))
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
+	assert.Equal(t, preConsumedQuota, log.Quota)
+	var other map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, "tiered_expr", other["billing_mode"])
+	assert.Equal(t, "actual", other["matched_tier"])
+	facts, ok := other["usage_facts"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, map[string]any{"units": float64(5)}, facts)
+}
+
+func TestUpdateBatchTasksRefundsFailedTaskWithoutUsageSettlement(t *testing.T) {
+	truncate(t)
+
+	const userID, tokenID, channelID = 42, 42, 142
+	const initialQuota, preConsumedQuota, tokenRemain = 10_000, 4_000, 7_000
+	seedUser(t, userID, initialQuota)
+	seedToken(t, tokenID, userID, "sk-batch-refund", tokenRemain)
+	seedTaskPollingChannel(t, channelID, true)
+
+	task := makeTask(userID, channelID, preConsumedQuota, tokenID, BillingSourceWallet, 0)
+	task.TaskID = "task_batch_refund"
+	task.Platform = "batch-plugin"
+	task.Properties.OriginModelName = "missing-batch-token-price"
+	task.PrivateData.UpstreamTaskID = "upstream_batch_refund"
+	task.PrivateData.BillingContext.OriginModelName = "missing-batch-token-price"
+	require.NoError(t, model.DB.Create(task).Error)
+
+	upstreamID := task.GetUpstreamTaskID()
+	adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{
+		upstreamID: {TaskInfo: relaycommon.TaskInfo{TaskID: upstreamID, Status: model.TaskStatusFailure, Reason: "upstream failed", TotalTokens: 123}},
+	}}
+	require.NoError(t, UpdateBatchTasks(context.Background(), adaptor, map[int][]string{channelID: {upstreamID}}, map[string]*model.Task{upstreamID: task}))
+
+	assert.Equal(t, initialQuota+preConsumedQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+preConsumedQuota, getTokenRemainQuota(t, tokenID))
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
 
 func TestUpdateVideoTasksCanSkipPollingSleepPerChannel(t *testing.T) {
@@ -346,243 +603,175 @@ func TestUpdateVideoTasksMixedChannelSleepSettings(t *testing.T) {
 	assert.ElementsMatch(t, []string{"upstream_sleepy_1", "upstream_fast_1", "upstream_fast_2"}, adaptor.fetchedTaskIDs())
 }
 
-func TestShouldDisableChannelForTaskFailure(t *testing.T) {
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	oldKeywords := append([]string(nil), operation_setting.AutomaticDisableKeywords...)
-	common.AutomaticDisableChannelEnabled = true
-	operation_setting.AutomaticDisableKeywords = []string{"auth failed", "invalid api key"}
-	t.Cleanup(func() {
-		common.AutomaticDisableChannelEnabled = oldEnabled
-		operation_setting.AutomaticDisableKeywords = oldKeywords
-	})
-
-	tests := []struct {
-		name   string
-		reason string
-		code   int
-		want   bool
-	}{
-		{name: "abandoned is task-level", reason: "abandoned (process restarted or request interrupted)", want: false},
-		{name: "authentication keyword", reason: "leonardo auth failed", want: true},
-		{name: "status code in reason", reason: `custom upstream auth failed: 401 {"detail":"invalid api key"}`, want: true},
-		{name: "provider status code", reason: "upstream rejected task", code: http.StatusUnauthorized, want: true},
-		{name: "content moderation", reason: "The content of your generation was moderated", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, ShouldDisableChannelForTaskFailure(tt.reason, tt.code))
-		})
-	}
-}
-
-func TestAsyncTaskFailureDisablesChannelOnlyForChannelError(t *testing.T) {
-	tests := []struct {
-		name       string
-		reason     string
-		wantStatus int
-	}{
-		{name: "abandoned keeps channel enabled", reason: "abandoned (process restarted or request interrupted)", wantStatus: common.ChannelStatusEnabled},
-		{name: "auth failure disables channel", reason: "leonardo auth failed", wantStatus: common.ChannelStatusAutoDisabled},
-	}
-
-	for i, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			truncate(t)
-			oldEnabled := common.AutomaticDisableChannelEnabled
-			oldKeywords := append([]string(nil), operation_setting.AutomaticDisableKeywords...)
-			common.AutomaticDisableChannelEnabled = true
-			operation_setting.AutomaticDisableKeywords = []string{"auth failed", "invalid api key"}
-			t.Cleanup(func() {
-				common.AutomaticDisableChannelEnabled = oldEnabled
-				operation_setting.AutomaticDisableKeywords = oldKeywords
-			})
-
-			channelID := 401 + i
-			seedTaskPollingChannel(t, channelID, true)
-			upstreamID := fmt.Sprintf("upstream_failure_%d", i)
-			task := seedPollingTask(t, channelID, fmt.Sprintf("task_failure_%d", i), upstreamID)
-			adaptor := &taskPollingFetchAdaptor{results: map[string]*relaycommon.TaskInfo{
-				upstreamID: {Status: model.TaskStatusFailure, Reason: tt.reason, Progress: "100%"},
-			}}
-
-			channel, err := model.GetChannelById(channelID, true)
-			require.NoError(t, err)
-			require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task}))
-
-			var reloadedChannel model.Channel
-			require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-			assert.Equal(t, tt.wantStatus, reloadedChannel.Status)
-		})
-	}
-}
-
-func TestAsyncTaskFailureDisablesOnlyOriginMultiKey(t *testing.T) {
+func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	truncate(t)
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	common.AutomaticDisableChannelEnabled = true
-	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = oldEnabled })
 
-	const channelID = 450
-	autoBan := 1
-	channel := &model.Channel{
+	const userID, tokenID, channelID = 401, 401, 401
+	const initialUserQuota, initialTokenQuota, taskQuota = 10_000, 6_000, 2_500
+	const publicTaskID, upstreamTaskID = "suno_public_refund_once", "suno_upstream_refund_once"
+
+	seedUser(t, userID, initialUserQuota)
+	seedToken(t, tokenID, userID, "sk-suno-refund-once", initialTokenQuota)
+	baseURL := "https://suno.invalid"
+	require.NoError(t, model.DB.Create(&model.Channel{
 		Id:      channelID,
-		Type:    constant.ChannelTypeKling,
-		Name:    "multi_key_polling_channel",
-		Key:     "sk-first\nsk-second",
-		AutoBan: &autoBan,
+		Type:    constant.ChannelTypeSunoAPI,
+		Name:    "suno_refund_once",
+		Key:     "sk-suno-channel",
 		Status:  common.ChannelStatusEnabled,
-		ChannelInfo: model.ChannelInfo{
-			IsMultiKey:         true,
-			MultiKeySize:       2,
-			MultiKeyStatusList: map[int]int{},
-		},
-	}
-	require.NoError(t, model.DB.Create(channel).Error)
+		BaseURL: &baseURL,
+	}).Error)
 
-	upstreamID := "upstream_multi_key_failure"
-	task := seedPollingTask(t, channelID, "task_multi_key_failure", upstreamID)
-	keyIndex := 1
-	task.PrivateData.ChannelMultiKeyIndex = &keyIndex
-	task.PrivateData.ChannelKeyFingerprint = fmt.Sprintf("%x", common.Sha256Raw([]byte("sk-second")))
-	require.NoError(t, model.DB.Model(task).Update("private_data", task.PrivateData).Error)
-	adaptor := &taskPollingFetchAdaptor{results: map[string]*relaycommon.TaskInfo{
-		upstreamID: {Status: model.TaskStatusFailure, Reason: "leonardo auth failed", Progress: "100%"},
+	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceWallet, 0)
+	task.TaskID = publicTaskID
+	task.Platform = constant.TaskPlatformSuno
+	task.Status = model.TaskStatusInProgress
+	task.Progress = "50%"
+	task.SubmitTime = time.Now().Unix()
+	task.PrivateData.UpstreamTaskID = upstreamTaskID
+	require.NoError(t, model.DB.Create(task).Error)
+
+	var firstPollTask model.Task
+	var staleSecondPollTask model.Task
+	require.NoError(t, model.DB.First(&firstPollTask, task.ID).Error)
+	require.NoError(t, model.DB.First(&staleSecondPollTask, task.ID).Error)
+
+	adaptor := &batchPollingAdaptor{results: map[string]*BatchTaskResult{
+		upstreamTaskID: {TaskInfo: relaycommon.TaskInfo{
+			TaskID: upstreamTaskID,
+			Status: model.TaskStatusFailure,
+			Reason: "upstream failed",
+		}},
 	}}
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
 
-	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task}))
+	require.NoError(t, updateBatchTasks(context.Background(), adaptor, channelID, []string{upstreamTaskID}, map[string]*model.Task{
+		upstreamTaskID: &firstPollTask,
+	}))
+	require.NoError(t, updateBatchTasks(context.Background(), adaptor, channelID, []string{upstreamTaskID}, map[string]*model.Task{
+		upstreamTaskID: &staleSecondPollTask,
+	}))
 
-	var reloadedChannel model.Channel
-	require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-	assert.Equal(t, common.ChannelStatusEnabled, reloadedChannel.Status)
-	assert.Equal(t, common.ChannelStatusAutoDisabled, reloadedChannel.ChannelInfo.MultiKeyStatusList[keyIndex])
-	_, firstKeyDisabled := reloadedChannel.ChannelInfo.MultiKeyStatusList[0]
-	assert.False(t, firstKeyDisabled)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	assert.Zero(t, reloaded.Quota)
+	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
+	assert.Equal(t, initialTokenQuota+taskQuota, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(1), countLogs(t))
 }
 
-func TestAsyncTaskFailureDoesNotDisableReplacedMultiKey(t *testing.T) {
+func TestRunTaskPollingOnceDoesNotRefundHistoricalFailedTask(t *testing.T) {
 	truncate(t)
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	common.AutomaticDisableChannelEnabled = true
-	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = oldEnabled })
 
-	const channelID = 451
-	autoBan := 1
-	channel := &model.Channel{
-		Id:      channelID,
-		Type:    constant.ChannelTypeKling,
-		Name:    "rotated_multi_key_polling_channel",
-		Key:     "sk-first\nsk-replacement",
-		AutoBan: &autoBan,
-		Status:  common.ChannelStatusEnabled,
-		ChannelInfo: model.ChannelInfo{
-			IsMultiKey:         true,
-			MultiKeySize:       2,
-			MultiKeyStatusList: map[int]int{},
-		},
+	const userID, initialQuota, taskQuota = 402, 10_000, 1_200
+	seedUser(t, userID, initialQuota)
+
+	task := makeTask(userID, 0, taskQuota, 0, BillingSourceWallet, 0)
+	task.TaskID = "historical_failed_already_refunded"
+	task.Status = model.TaskStatusFailure
+	task.Progress = "100%"
+	task.SubmitTime = time.Now().Add(-90 * 24 * time.Hour).Unix()
+	task.UpdatedAt = time.Now().Add(-time.Minute).Unix()
+	require.NoError(t, model.DB.Create(task).Error)
+
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor {
+		return &taskPollingFetchAdaptor{}
 	}
-	require.NoError(t, model.DB.Create(channel).Error)
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+	previousLimit := constant.TaskQueryLimit
+	constant.TaskQueryLimit = 100
+	t.Cleanup(func() { constant.TaskQueryLimit = previousLimit })
 
-	upstreamID := "upstream_rotated_key_failure"
-	task := seedPollingTask(t, channelID, "task_rotated_key_failure", upstreamID)
-	keyIndex := 1
-	task.PrivateData.ChannelMultiKeyIndex = &keyIndex
-	task.PrivateData.ChannelKeyFingerprint = fmt.Sprintf("%x", common.Sha256Raw([]byte("sk-original")))
-	require.NoError(t, model.DB.Model(task).Update("private_data", task.PrivateData).Error)
-	adaptor := &taskPollingFetchAdaptor{results: map[string]*relaycommon.TaskInfo{
-		upstreamID: {Status: model.TaskStatusFailure, Reason: "leonardo auth failed", Progress: "100%"},
-	}}
+	summary := RunTaskPollingOnce(context.Background(), nil)
 
-	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task}))
-
-	var reloadedChannel model.Channel
-	require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-	assert.Equal(t, common.ChannelStatusEnabled, reloadedChannel.Status)
-	assert.Empty(t, reloadedChannel.ChannelInfo.MultiKeyStatusList)
+	assert.Zero(t, summary.UnfinishedTasks)
+	assert.Equal(t, initialQuota, getUserQuota(t, userID))
+	assert.Equal(t, taskQuota, getTaskQuota(t, task.ID))
+	assert.Equal(t, int64(0), countLogs(t))
 }
 
-func TestAsyncTaskHTTPErrorFailsTaskAndDisablesChannel(t *testing.T) {
+func TestRunTaskPollingOnceRefundsTaskMissingUpstreamID(t *testing.T) {
 	truncate(t)
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	common.AutomaticDisableChannelEnabled = true
-	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = oldEnabled })
 
-	const channelID = 452
-	seedTaskPollingChannel(t, channelID, true)
-	upstreamID := "upstream_http_auth_failure"
-	task := seedPollingTask(t, channelID, "task_http_auth_failure", upstreamID)
-	adaptor := &taskPollingFetchAdaptor{
-		statusCodes:    map[string]int{upstreamID: http.StatusUnauthorized},
-		responseBodies: map[string][]byte{upstreamID: []byte(`{"error":{"message":"invalid api key","code":"401"}}`)},
+	const userID, channelID, initialQuota, taskQuota = 404, 404, 10_000, 1_200
+	seedUser(t, userID, initialQuota)
+	seedChannel(t, channelID)
+	seedChargedAccounting(t, userID, channelID, 0, taskQuota, 1)
+
+	task := makeTask(userID, channelID, taskQuota, 0, BillingSourceWallet, 0)
+	// A truly missing upstream identifier has neither the new private field nor
+	// the legacy task_id fallback used by GetUpstreamTaskID.
+	task.TaskID = ""
+	task.Platform = "missing-upstream-id"
+	task.Progress = "50%"
+	task.SubmitTime = time.Now().Unix()
+	require.NoError(t, model.DB.Create(task).Error)
+
+	previousFactory := GetTaskAdaptorFunc
+	GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor {
+		return &taskPollingFetchAdaptor{}
 	}
+	t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+	previousLimit := constant.TaskQueryLimit
+	constant.TaskQueryLimit = 100
+	t.Cleanup(func() { constant.TaskQueryLimit = previousLimit })
 
-	channel, err := model.GetChannelById(channelID, true)
-	require.NoError(t, err)
-	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task}))
+	summary := RunTaskPollingOnce(context.Background(), nil)
 
-	var reloadedTask model.Task
-	require.NoError(t, model.DB.First(&reloadedTask, task.ID).Error)
-	assert.EqualValues(t, model.TaskStatusFailure, reloadedTask.Status)
-	assert.Equal(t, "invalid api key", reloadedTask.FailReason)
-
-	var reloadedChannel model.Channel
-	require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-	assert.Equal(t, common.ChannelStatusAutoDisabled, reloadedChannel.Status)
+	var reloaded model.Task
+	require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+	assert.Equal(t, 1, summary.NullTasksFailed)
+	assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+	assert.Equal(t, "100%", reloaded.Progress)
+	assert.Contains(t, reloaded.FailReason, "上游任务 ID")
+	assert.Zero(t, reloaded.Quota)
+	assert.Equal(t, initialQuota+taskQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(1), countLogs(t))
 }
 
-func TestAsyncTaskHTTP429RemainsPending(t *testing.T) {
+func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 	truncate(t)
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	common.AutomaticDisableChannelEnabled = true
-	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = oldEnabled })
 
-	const channelID = 453
-	seedTaskPollingChannel(t, channelID, true)
-	upstreamID := "upstream_http_rate_limit"
-	task := seedPollingTask(t, channelID, "task_http_rate_limit", upstreamID)
-	adaptor := &taskPollingFetchAdaptor{
-		statusCodes:    map[string]int{upstreamID: http.StatusTooManyRequests},
-		responseBodies: map[string][]byte{upstreamID: []byte(`{"error":{"message":"rate limited","code":"429"}}`)},
-	}
+	const (
+		userID          = 403
+		initialQuota    = 10_000
+		legacyTaskQuota = 1_800
+		modernTaskQuota = 1_200
+	)
+	seedUser(t, userID, initialQuota)
 
-	channel, err := model.GetChannelById(channelID, true)
-	require.NoError(t, err)
-	require.NoError(t, updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task}))
+	legacyTask := makeTask(userID, 0, legacyTaskQuota, 0, BillingSourceWallet, 0)
+	legacyTask.TaskID = "legacy_timeout_without_refund"
+	legacyTask.Progress = "50%"
+	legacyTask.SubmitTime = 1771718399 // 2026-02-21 23:59:59 UTC
+	require.NoError(t, model.DB.Create(legacyTask).Error)
 
-	var reloadedTask model.Task
-	require.NoError(t, model.DB.First(&reloadedTask, task.ID).Error)
-	assert.EqualValues(t, model.TaskStatusInProgress, reloadedTask.Status)
+	modernTask := makeTask(userID, 0, modernTaskQuota, 0, BillingSourceWallet, 0)
+	modernTask.TaskID = "modern_timeout_with_refund"
+	modernTask.Progress = "50%"
+	modernTask.SubmitTime = 1771718400 // 2026-02-22 00:00:00 UTC
+	require.NoError(t, model.DB.Create(modernTask).Error)
 
-	var reloadedChannel model.Channel
-	require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-	assert.Equal(t, common.ChannelStatusEnabled, reloadedChannel.Status)
-}
+	previousTimeout := constant.TaskTimeoutMinutes
+	constant.TaskTimeoutMinutes = 1
+	t.Cleanup(func() { constant.TaskTimeoutMinutes = previousTimeout })
 
-func TestAsyncTaskTransientHTTPErrorRemainsPending(t *testing.T) {
-	truncate(t)
-	oldEnabled := common.AutomaticDisableChannelEnabled
-	common.AutomaticDisableChannelEnabled = true
-	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = oldEnabled })
+	sweepTimedOutTasks(context.Background())
 
-	const channelID = 454
-	seedTaskPollingChannel(t, channelID, true)
-	upstreamID := "upstream_http_transient_failure"
-	task := seedPollingTask(t, channelID, "task_http_transient_failure", upstreamID)
-	adaptor := &taskPollingFetchAdaptor{
-		statusCodes:    map[string]int{upstreamID: http.StatusServiceUnavailable},
-		responseBodies: map[string][]byte{upstreamID: []byte(`{"error":{"message":"temporarily unavailable","code":"503"}}`)},
-	}
-
-	channel, err := model.GetChannelById(channelID, true)
-	require.NoError(t, err)
-	err = updateVideoSingleTask(context.Background(), adaptor, channel, upstreamID, map[string]*model.Task{upstreamID: task})
-	require.ErrorContains(t, err, "HTTP status 503")
-
-	var reloadedTask model.Task
-	require.NoError(t, model.DB.First(&reloadedTask, task.ID).Error)
-	assert.EqualValues(t, model.TaskStatusInProgress, reloadedTask.Status)
-
-	var reloadedChannel model.Channel
-	require.NoError(t, model.DB.First(&reloadedChannel, channelID).Error)
-	assert.Equal(t, common.ChannelStatusEnabled, reloadedChannel.Status)
+	var reloadedLegacy model.Task
+	var reloadedModern model.Task
+	require.NoError(t, model.DB.First(&reloadedLegacy, legacyTask.ID).Error)
+	require.NoError(t, model.DB.First(&reloadedModern, modernTask.ID).Error)
+	assert.EqualValues(t, model.TaskStatusFailure, reloadedLegacy.Status)
+	assert.EqualValues(t, model.TaskStatusFailure, reloadedModern.Status)
+	assert.Zero(t, reloadedLegacy.Quota)
+	assert.Zero(t, reloadedModern.Quota)
+	assert.Contains(t, reloadedLegacy.FailReason, "旧系统遗留任务")
+	assert.Contains(t, reloadedModern.FailReason, "任务超时")
+	assert.Equal(t, initialQuota+modernTaskQuota, getUserQuota(t, userID))
+	assert.Equal(t, int64(1), countLogs(t))
 }
