@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { parseSponsorSites, type SponsorSite } from '@/lib/sponsor-sites'
+
 export type HeaderNavAccessConfig = {
   enabled: boolean
   requireAuth: boolean
@@ -28,7 +30,8 @@ export type HeaderNavModulesConfig = {
   rankings: HeaderNavAccessConfig
   docs: boolean
   about: boolean
-  [key: string]: boolean | HeaderNavAccessConfig
+  sponsors: SponsorSite[]
+  [key: string]: boolean | HeaderNavAccessConfig | SponsorSite[]
 }
 
 export type SidebarSectionConfig = {
@@ -51,6 +54,7 @@ export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
   },
   docs: true,
   about: true,
+  sponsors: parseSponsorSites(undefined),
 }
 
 export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
@@ -100,6 +104,7 @@ const cloneHeaderNavDefault = (): HeaderNavModulesConfig => ({
   ...HEADER_NAV_DEFAULT,
   pricing: { ...HEADER_NAV_DEFAULT.pricing },
   rankings: { ...HEADER_NAV_DEFAULT.rankings },
+  sponsors: parseSponsorSites(undefined),
 })
 
 const parseAccessModule = (
@@ -151,6 +156,10 @@ export function parseHeaderNavModules(
     }
 
     Object.entries(parsed).forEach(([key, raw]) => {
+      if (key === 'sponsors') {
+        result.sponsors = parseSponsorSites(raw)
+        return
+      }
       if (key === 'pricing') {
         result.pricing = parseAccessModule(raw, base.pricing)
         return

@@ -23,14 +23,23 @@ import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
 import {
+  FieldDescription,
+  FieldGroup,
+  FieldLegend,
+  FieldSet,
+} from '@/components/ui/field'
+import {
   Form,
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { isHttpUrl } from '@/lib/content-format'
 
 import {
   SettingsControlChildren,
@@ -57,6 +66,40 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
+  sponsors: z
+    .array(
+      z
+        .object({
+          enabled: z.boolean(),
+          name: z.string().trim().max(80, 'Use at most 80 characters'),
+          url: z
+            .string()
+            .trim()
+            .max(2048, 'Use at most 2048 characters')
+            .refine(
+              (value) => !value || isHttpUrl(value),
+              'Enter a valid HTTP or HTTPS URL'
+            ),
+        })
+        .superRefine((site, context) => {
+          if (!site.enabled) return
+          if (!site.name) {
+            context.addIssue({
+              code: 'custom',
+              path: ['name'],
+              message: 'Link title is required when enabled',
+            })
+          }
+          if (!site.url) {
+            context.addIssue({
+              code: 'custom',
+              path: ['url'],
+              message: 'Site URL is required when enabled',
+            })
+          }
+        })
+    )
+    .length(3),
 })
 
 type HeaderNavFormValues = z.infer<typeof headerNavSchema>
@@ -95,6 +138,7 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
       : Boolean(config.about),
+  sponsors: config.sponsors,
 })
 
 export function HeaderNavigationSection({
@@ -121,6 +165,7 @@ export function HeaderNavigationSection({
       console: values.console,
       docs: values.docs,
       about: values.about,
+      sponsors: values.sponsors,
       pricing: {
         ...(config.pricing ?? HEADER_NAV_DEFAULT.pricing),
         enabled: values.pricingEnabled,
@@ -149,7 +194,7 @@ export function HeaderNavigationSection({
   }
 
   const simpleModules: Array<{
-    key: keyof HeaderNavFormValues
+    key: 'home' | 'console' | 'docs' | 'about'
     title: string
     description: string
   }> = [
@@ -176,8 +221,8 @@ export function HeaderNavigationSection({
   ]
 
   const accessModules: Array<{
-    enabledKey: keyof HeaderNavFormValues
-    requireAuthKey: keyof HeaderNavFormValues
+    enabledKey: 'pricingEnabled' | 'rankingsEnabled'
+    requireAuthKey: 'pricingRequireAuth' | 'rankingsRequireAuth'
     requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
     title: string
     description: string
@@ -294,6 +339,73 @@ export function HeaderNavigationSection({
               </SettingsControlGroup>
             ))}
           </div>
+          <FieldSet>
+            <FieldLegend>{t('Custom navigation links')}</FieldLegend>
+            <FieldDescription>
+              {t(
+                'Add up to three links after About. Enter a title and URL; links open in a new tab.'
+              )}
+            </FieldDescription>
+            <FieldGroup className='grid gap-4 xl:grid-cols-3'>
+              {[0, 1, 2].map((index) => (
+                <FieldSet
+                  key={index}
+                  className='bg-muted/20 min-w-0 gap-4 rounded-xl border p-4'
+                >
+                  <FieldLegend variant='label'>
+                    {t('Navigation link {{number}}', { number: index + 1 })}
+                  </FieldLegend>
+                  <FormField
+                    control={form.control}
+                    name={`sponsors.${index}.enabled`}
+                    render={({ field }) => (
+                      <SettingsSwitchItem className='py-0'>
+                        <FormLabel>{t('Show')}</FormLabel>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </SettingsSwitchItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`sponsors.${index}.name`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Link title')}</FormLabel>
+                        <FormControl>
+                          <Input {...field} maxLength={80} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name={`sponsors.${index}.url`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Site URL')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='url'
+                            placeholder='https://example.com'
+                            maxLength={2048}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </FieldSet>
+              ))}
+            </FieldGroup>
+          </FieldSet>
         </SettingsForm>
       </Form>
     </SettingsSection>

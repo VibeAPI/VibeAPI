@@ -96,7 +96,10 @@ export function PublicHeader(props: PublicHeaderProps) {
   const user = auth.user
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
-  const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const links =
+    dynamicLinks.length > 0
+      ? dynamicLinks
+      : navLinks.map((link) => ({ ...link, title: t(link.title) }))
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20)
@@ -160,7 +163,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         }
         setAuthPromptSecondsLeft(AUTH_PROMPT_SECONDS)
         setAuthPromptTarget({
-          title: t(link.title),
+          title: link.title,
           href: link.href,
         })
         return
@@ -170,7 +173,7 @@ export function PublicHeader(props: PublicHeaderProps) {
         setMobileOpen(false)
       }
     },
-    [t]
+    []
   )
 
   return (
@@ -184,74 +187,80 @@ export function PublicHeader(props: PublicHeaderProps) {
         >
           <nav
             className={cn(
-              'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
+              'flex items-center justify-between gap-3 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
                 ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
                 : 'h-16 px-2'
             )}
           >
             {/* Logo */}
-            <Link
-              to={homeUrl}
-              className='group flex shrink-0 items-center gap-2.5'
-            >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
-                {loading ? (
-                  <Skeleton className='size-full rounded-lg' />
-                ) : customLogo ? (
-                  customLogo
-                ) : (
-                  <HeaderLogo
-                    src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
-                  />
-                )}
-              </div>
-              <span className='text-sm font-semibold tracking-tight'>
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
-            </Link>
+            <div className='shrink-0'>
+              <Link
+                to={homeUrl}
+                className='group flex shrink-0 items-center gap-2.5'
+              >
+                <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+                  {loading && <Skeleton className='size-full rounded-lg' />}
+                  {!loading &&
+                    (customLogo ?? (
+                      <HeaderLogo
+                        src={systemLogo}
+                        loading={loading}
+                        logoLoaded={logoLoaded}
+                        className='size-full rounded-lg object-contain'
+                      />
+                    ))}
+                </div>
+                <span className='text-sm font-semibold tracking-tight'>
+                  {loading ? (
+                    <Skeleton className='h-4 w-16' />
+                  ) : (
+                    displaySiteName
+                  )}
+                </span>
+              </Link>
+            </div>
 
             {/* Desktop nav */}
-            <div className='hidden items-center gap-0.5 sm:flex'>
-              {links.map((link, i) => {
+            <div className='no-scrollbar hidden min-w-0 items-center gap-0.5 overflow-x-auto sm:flex'>
+              {links.map((link) => {
                 const isActive = pathname === link.href
                 if (link.external) {
                   return (
                     <a
-                      key={i}
+                      key={link.href}
                       href={link.href}
                       target='_blank'
                       rel='noopener noreferrer'
                       aria-disabled={link.disabled}
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
+                      title={link.title}
                       className={cn(
-                        'text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                        'text-muted-foreground hover:text-foreground max-w-40 shrink-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
                         link.disabled && 'pointer-events-none opacity-50'
                       )}
                     >
-                      {t(link.title)}
+                      {link.title}
                     </a>
                   )
                 }
                 return (
                   <Link
-                    key={i}
+                    key={link.href}
                     to={link.href}
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
+                    title={link.title}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
+                      'max-w-40 shrink-0 truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
                       isActive
                         ? 'text-foreground'
                         : 'text-muted-foreground hover:text-foreground',
                       link.disabled && 'pointer-events-none opacity-50'
                     )}
                   >
-                    {t(link.title)}
+                    {link.title}
                   </Link>
                 )
               })}
@@ -280,11 +289,9 @@ export function PublicHeader(props: PublicHeaderProps) {
               {showAuthButtons && (
                 <>
                   <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading ? (
-                    <Skeleton className='h-8 w-20 rounded-lg' />
-                  ) : isAuthenticated ? (
-                    <ProfileDropdown />
-                  ) : (
+                  {loading && <Skeleton className='h-8 w-20 rounded-lg' />}
+                  {!loading && isAuthenticated && <ProfileDropdown />}
+                  {!loading && !isAuthenticated && (
                     <Button
                       size='sm'
                       className='h-8 rounded-lg px-3.5 text-xs font-medium'
@@ -351,7 +358,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             {links.map((link, i) => {
               const isActive = pathname === link.href
               const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                'flex items-center gap-3 break-words py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
                 mobileOpen
                   ? 'translate-y-0 opacity-100'
                   : 'translate-y-4 opacity-0',
@@ -364,7 +371,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               if (link.external) {
                 return (
                   <a
-                    key={i}
+                    key={link.href}
                     href={link.href}
                     target='_blank'
                     rel='noopener noreferrer'
@@ -374,20 +381,20 @@ export function PublicHeader(props: PublicHeaderProps) {
                     className={linkClassName}
                     style={transitionStyle}
                   >
-                    {t(link.title)}
+                    {link.title}
                   </a>
                 )
               }
               return (
                 <Link
-                  key={i}
+                  key={link.href}
                   to={link.href}
                   disabled={link.disabled}
                   onClick={(event) => handleNavLinkClick(event, link, true)}
                   className={linkClassName}
                   style={transitionStyle}
                 >
-                  {t(link.title)}
+                  {link.title}
                 </Link>
               )
             })}

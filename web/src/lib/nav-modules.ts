@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { getStatus } from '@/lib/api'
+import { parseSponsorSites, type SponsorSite } from '@/lib/sponsor-sites'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
@@ -29,7 +30,8 @@ export type HeaderNavModules = {
   rankings: ModuleAccess
   docs: boolean
   about: boolean
-  [key: string]: boolean | ModuleAccess
+  sponsors: SponsorSite[]
+  [key: string]: boolean | ModuleAccess | SponsorSite[]
 }
 
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
@@ -39,6 +41,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   rankings: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
+  sponsors: parseSponsorSites(undefined),
 }
 
 const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
@@ -51,6 +54,7 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     ...DEFAULT_HEADER_NAV_MODULES,
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
+    sponsors: parseSponsorSites(undefined),
   }
 }
 
@@ -110,6 +114,10 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
   if (!parsed) return result
 
   Object.entries(parsed).forEach(([key, value]) => {
+    if (key === 'sponsors') {
+      result.sponsors = parseSponsorSites(value)
+      return
+    }
     if (key === 'pricing') {
       result.pricing = parseAccess(value, result.pricing)
       return

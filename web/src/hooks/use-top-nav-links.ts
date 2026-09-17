@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { isHttpUrl } from '@/lib/content-format'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -98,6 +99,12 @@ export function useTopNavLinks(): TopNavLink[] {
   // About
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: '/about' })
+  }
+
+  for (const site of modules.sponsors) {
+    if (site.enabled && site.name && isHttpUrl(site.url)) {
+      links.push({ title: site.name, href: site.url, external: true })
+    }
   }
 
   return links

@@ -26,6 +26,11 @@ export const STATIC_I18N_KEYS = [
   'Rankings',
   'Docs',
   'About',
+  'Link title is required when enabled',
+  'Site URL is required when enabled',
+  'Enter a valid HTTP or HTTPS URL',
+  'Use at most 80 characters',
+  'Use at most 2048 characters',
 
   // Sidebar views (drill-in workspaces)
   'System Settings',
