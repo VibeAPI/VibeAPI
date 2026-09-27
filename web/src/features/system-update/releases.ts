@@ -110,6 +110,9 @@ export function selectLatestRelease(payload: unknown): SystemRelease | null {
   return latest
 }
 
+// Release source for the fork; keep in sync with defaultSystemUpdateReleaseRepository in service/system_update.go.
+export const SYSTEM_RELEASE_REPOSITORY = 'VibeAPI/VibeAPI'
+
 export function getSystemReleaseUrl(release: SystemRelease): string {
-  return `https://github.com/QuantumNous/new-api/releases/tag/${encodeURIComponent(release.tag_name)}`
+  return `https://github.com/${SYSTEM_RELEASE_REPOSITORY}/releases/tag/${encodeURIComponent(release.tag_name)}`
 }

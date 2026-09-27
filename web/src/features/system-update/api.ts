@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { selectLatestRelease, type SystemRelease } from './releases'
+import {
+  selectLatestRelease,
+  SYSTEM_RELEASE_REPOSITORY,
+  type SystemRelease,
+} from './releases'
 import type {
   SystemReleaseList,
   SystemUpdateCapability,
@@ -129,7 +133,7 @@ export async function fetchLatestSystemRelease(
 
   try {
     const response = await fetch(
-      'https://api.github.com/repos/QuantumNous/new-api/releases?per_page=100',
+      `https://api.github.com/repos/${SYSTEM_RELEASE_REPOSITORY}/releases?per_page=100`,
       {
         credentials: 'omit',
         headers: { Accept: 'application/vnd.github+json' },
