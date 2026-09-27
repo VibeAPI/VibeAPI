@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { VersionManager } from '@/features/system-update'
+import { SystemUpdateAction } from '@/features/system-update/system-update-action'
 
 import { SettingsSection } from '../components/settings-section'
 
@@ -32,10 +33,13 @@ export function UpdateCheckerSection(props: UpdateCheckerSectionProps) {
 
   return (
     <SettingsSection title={t('System maintenance')}>
-      <VersionManager
-        currentVersion={props.currentVersion}
-        startTime={props.startTime}
-      />
+      <div className='space-y-6'>
+        <VersionManager
+          currentVersion={props.currentVersion}
+          startTime={props.startTime}
+        />
+        <SystemUpdateAction compact={false} />
+      </div>
     </SettingsSection>
   )
 }

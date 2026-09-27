@@ -33,12 +33,20 @@ import type { LogCategory } from '../types'
 export function useColumnsByCategory(
   logCategory: LogCategory,
   isAdmin: boolean,
-  showChannelInfo: boolean
+  isRoot: boolean,
+  showChannelInfo = isAdmin,
+  showBillingSource = false
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): ColumnDef<any>[] {
-  const commonColumns = useCommonLogsColumns(isAdmin, showChannelInfo)
+  const commonColumns = useCommonLogsColumns(
+    isAdmin,
+    isRoot,
+    showChannelInfo,
+    showBillingSource
+  )
   const drawingColumns = useDrawingLogsColumns(isAdmin, showChannelInfo)
-  const taskColumns = useTaskLogsColumns(isAdmin, showChannelInfo)
+  // Root-only task metadata also follows the local channel-visibility gate.
+  const taskColumns = useTaskLogsColumns(isAdmin, isRoot && showChannelInfo)
 
   switch (logCategory) {
     case 'common':
