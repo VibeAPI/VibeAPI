@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2034,4 +2035,43 @@ func TestTaskAdaptorChainsSunoBatchFetchThroughNewAPIUpstream(t *testing.T) {
 	require.Contains(t, results, "task_up_public")
 	assert.Equal(t, "SUCCESS", results["task_up_public"].TaskInfo.Status)
 	assert.Equal(t, []string{"POST /suno/submit/MUSIC", "POST /suno/fetch"}, seen)
+}
+
+func TestSoraLegacyBillingPreservesPriceUnit(t *testing.T) {
+	source, err := plugins.Source("sora")
+	require.NoError(t, err)
+	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{})
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		name, unit, size string
+		fixed            bool
+		seconds          int
+		want             float64
+	}{
+		{"per request", "request", "720x1280", true, 8, 1},
+		{"per request default duration", "request", "720x1280", true, 0, 1},
+		{"per second", "second", "720x1280", true, 8, 8},
+		{"per second default duration", "second", "720x1280", true, 0, 4},
+		{"legacy ratio", "request", "720x1280", false, 8, 8},
+		{"per request high resolution", "request", "1792x1024", true, 8, 1.666667},
+		{"per second high resolution", "second", "1024x1792", true, 8, 8 * 1.666667},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := &relaycommon.RelayInfo{OriginModelName: "sora-2", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "sora-2"}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}, PriceData: types.PriceData{UsePrice: tc.fixed, PriceUnit: tc.unit}}
+			adaptor := New(plugin)
+			adaptor.Init(info)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+			c.Set("task_request", map[string]any{"model": "sora-2", "seconds": tc.seconds, "size": tc.size})
+			ratios, err := adaptor.EstimateBillingValidated(c, info)
+			require.NoError(t, err)
+			for key, value := range ratios {
+				info.PriceData.AddOtherRatio(key, value)
+			}
+			assert.InDelta(t, 100*tc.want, info.PriceData.ApplyOtherRatiosToFloat(100), 0.00001)
+			facts, err := adaptor.ExtractUsageFactsValidated(c, info)
+			require.NoError(t, err)
+			assert.Equal(t, float64(max(tc.seconds, 4)), facts["seconds"], "expression usage must retain duration independently of legacy price unit")
+		})
+	}
 }

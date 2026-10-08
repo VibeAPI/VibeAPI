@@ -123,7 +123,11 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			}
 		}
 		countClaudeStreamBillableTools(c, info, &claudeResponse)
-		helper.ClaudeChunkData(c, claudeResponse, data)
+		responseData, rewriteErr := relaycommon.RewriteResponseModel([]byte(data), info, "model", "message.model")
+		if rewriteErr != nil {
+			return types.NewError(rewriteErr, types.ErrorCodeJsonMarshalFailed)
+		}
+		helper.ClaudeChunkData(c, claudeResponse, string(responseData))
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		state, err := claudeToChatStreamState(info)
 		if err != nil {
@@ -366,6 +370,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		if responseID := helper.GetResponseID(c); responseID != "" {
 			responsesResponse.ID = responseID
 		}
+		responsesResponse.Model = info.ExposeResponseModelName(responsesResponse.Model)
 		responseData, err = common.Marshal(responsesResponse)
 		if err != nil {
 			return types.NewError(err, types.ErrorCodeBadResponseBody)

@@ -328,6 +328,30 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "payment_setting.corporate_payment_allowed_groups":
+		var groups []string
+		if err = common.UnmarshalJsonStr(option.Value.(string), &groups); err != nil {
+			common.ApiErrorMsg(c, "对公支付可见分组配置无效")
+			return
+		}
+		configuredGroups := ratio_setting.GetGroupRatioCopy()
+		seen := make(map[string]struct{}, len(groups))
+		for _, group := range groups {
+			group = strings.TrimSpace(group)
+			if group == "" {
+				common.ApiErrorMsg(c, "对公支付可见分组不能为空")
+				return
+			}
+			if _, ok := configuredGroups[group]; !ok {
+				common.ApiErrorMsg(c, "对公支付可见分组不存在: "+group)
+				return
+			}
+			if _, ok := seen[group]; ok {
+				common.ApiErrorMsg(c, "对公支付可见分组不能重复: "+group)
+				return
+			}
+			seen[group] = struct{}{}
+		}
 	case "gemini.safety_settings":
 		err = model_setting.ValidateGeminiSafetySettings(option.Value.(string))
 		if err != nil {

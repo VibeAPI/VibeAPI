@@ -155,7 +155,24 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 func (a *TaskAdaptor) EstimateBillingValidated(c *gin.Context, info *relaycommon.RelayInfo) (map[string]float64, error) {
 	usageContext := a.submitContext(c, info)
 	usageContext["usagePurpose"] = "billing_ratios"
-	return a.usageRatios(c.Request.Context(), []string{info.UpstreamModelName, info.OriginModelName}, "extractUsage", usageContext)
+	ratios, err := a.usageRatios(c.Request.Context(), []string{info.UpstreamModelName, info.OriginModelName}, "extractUsage", usageContext)
+	if err != nil || a.plugin.Meta.Key != "sora" || info.Action == constant.TaskActionRemix {
+		return ratios, err
+	}
+	// Preserve the pre-plugin Sora price contract. Usage facts for expressions
+	// still include seconds and the size enum; only legacy billing uses ratios.
+	if ratios == nil {
+		ratios = make(map[string]float64)
+	}
+	if info.PriceData.UsePrice && info.PriceData.PriceUnit != model.PriceUnitSecond {
+		delete(ratios, "seconds")
+	}
+	ratios["size"] = 1
+	request, _ := usageContext["requestBody"].(map[string]any)
+	if request["size"] == "1792x1024" || request["size"] == "1024x1792" {
+		ratios["size"] = 1.666667
+	}
+	return ratios, nil
 }
 
 func (a *TaskAdaptor) ExtractUsageFacts(c *gin.Context, info *relaycommon.RelayInfo) map[string]any {

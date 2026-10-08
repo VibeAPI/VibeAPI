@@ -179,6 +179,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = channelErr
 			break
 		}
+		channel, channelErr = applyPromptAudit(c, relayInfo, request, channel)
+		if channelErr != nil {
+			newAPIError = channelErr
+			break
+		}
 		service.AppendUsedChannel(c, channel.Id)
 		if billingErr := service.PrepareTieredBillingForSelectedGroup(c, relayInfo); billingErr != nil {
 			newAPIError = billingErr
@@ -343,6 +348,19 @@ func applyPromptAudit(c *gin.Context, relayInfo *relaycommon.RelayInfo, request 
 	if c.GetBool("prompt_audit_checked") {
 		return channel, nil
 	}
+	if request == nil && relayInfo.TaskRelayInfo != nil {
+		// Task decoders normalize the prompt before channel selection. Read that
+		// body so native, multipart and host-protocol submissions share the check.
+		value, _ := c.Get("task_request")
+		var prompt string
+		switch taskRequest := value.(type) {
+		case map[string]any:
+			prompt, _ = taskRequest["prompt"].(string)
+		case relaycommon.TaskSubmitReq:
+			prompt = taskRequest.Prompt
+		}
+		request = &dto.ImageRequest{Prompt: prompt, Model: relayInfo.OriginModelName}
+	}
 	content, _ := service.ExtractPromptAuditContent(request, setting)
 	if content == "" {
 		c.Set("prompt_audit_checked", true)
@@ -366,6 +384,9 @@ func applyPromptAudit(c *gin.Context, relayInfo *relaycommon.RelayInfo, request 
 }
 
 func selectPromptAuditFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, setting operation_setting.PromptAuditSetting, origin *model.Channel) (*model.Channel, *types.NewAPIError) {
+	if relayInfo.TaskRelayInfo != nil && (relayInfo.OriginTaskID != "" || len(relayInfo.OriginTasks) > 0) {
+		return nil, types.NewErrorWithStatusCode(errors.New("the origin task channel cannot be changed by prompt audit"), types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
 	selectGroup := common.GetContextKeyString(c, constant.ContextKeyAutoGroup)
 	if selectGroup == "" {
 		selectGroup = relayInfo.TokenGroup
@@ -376,6 +397,9 @@ func selectPromptAuditFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo,
 			err = errors.New("no unprotected channel is available")
 		}
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
+	}
+	if allowed, _ := model.ChannelSatisfiesFilters(channel, relayInfo.OriginModelName, service.GetChannelConstraints(c).Filters); !allowed {
+		return nil, types.NewErrorWithStatusCode(errors.New("no compatible prompt audit fallback channel is available"), types.ErrorCodePromptAuditUnavailable, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
 	}
 	c.Set("prompt_audit_checked", true)
 	c.Set("prompt_audit_force_fallback", true)
@@ -628,6 +652,13 @@ func executeTaskSubmissionWith(
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", channelErr.StatusCode)
 				break
 			}
+		}
+		stage = "prompt_audit"
+		var auditErr *types.NewAPIError
+		channel, auditErr = applyPromptAudit(c, relayInfo, nil, channel)
+		if auditErr != nil {
+			taskErr = service.TaskErrorWrapperLocal(auditErr.Err, string(auditErr.GetErrorCode()), auditErr.StatusCode)
+			break
 		}
 		diagnostics.attempt(retryParam.GetRetry()+1, channel, relayInfo.LockedChannel != nil)
 
