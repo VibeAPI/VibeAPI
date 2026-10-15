@@ -126,6 +126,10 @@ func GetStatus(c *gin.Context) {
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+
+		"upstream_balance_enabled":                  operation_setting.GetUpstreamBalanceSetting().Enabled,
+		"upstream_balance_visibility":               operation_setting.GetUpstreamBalanceSetting().Visibility,
+		"upstream_balance_refresh_interval_seconds": operation_setting.GetUpstreamBalanceSetting().RefreshIntervalSeconds,
 	}
 
 	// 根据启用状态注入可选内容

@@ -482,8 +482,7 @@ func GetSelf(c *gin.Context) {
 	// The authenticated role is loaded from GetUserCache. It should equal the
 	// row role, but use it for capabilities so GetSelf and login/refresh remain
 	// consistent with the authorization decision made for this request.
-	permissions := calculateUserPermissions(userRole)
-	permissions["admin_permissions"] = authz.Capabilities(id, userRole)
+	permissions := buildSelfPermissions(id, userRole)
 	responseData["permissions"] = permissions
 
 	c.JSON(http.StatusOK, gin.H{
@@ -499,8 +498,7 @@ func GetSelf(c *gin.Context) {
 // administrator-only remarks.
 func buildSelfUserData(user *model.User) map[string]any {
 	userSetting := user.GetSetting()
-	permissions := calculateUserPermissions(user.Role)
-	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
+	permissions := buildSelfPermissions(user.Id, user.Role)
 	return map[string]any{
 		"id":                user.Id,
 		"username":          user.Username,
@@ -529,6 +527,29 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
 	}
+}
+
+// buildSelfPermissions 计算当前用户的权限信息；当渠道模块被限制为仅超级管理员可见时，
+// 对普通管理员隐藏渠道侧边栏入口及渠道相关的管理权限。
+func buildSelfPermissions(userID int, userRole int) map[string]any {
+	permissions := calculateUserPermissions(userRole)
+	canViewChannels := common.CanViewSidebarModule(userRole, "admin", "channel")
+	if !canViewChannels {
+		if sidebarModules, ok := permissions["sidebar_modules"].(map[string]any); ok {
+			adminModules, _ := sidebarModules["admin"].(map[string]any)
+			if adminModules == nil {
+				adminModules = map[string]any{}
+				sidebarModules["admin"] = adminModules
+			}
+			adminModules["channel"] = false
+		}
+	}
+	adminPermissions := authz.Capabilities(userID, userRole)
+	if !canViewChannels {
+		delete(adminPermissions, authz.ResourceChannel)
+	}
+	permissions["admin_permissions"] = adminPermissions
+	return permissions
 }
 
 // 计算用户权限的辅助函数

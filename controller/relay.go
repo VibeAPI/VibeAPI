@@ -749,6 +749,12 @@ func executeTaskSubmissionWith(
 	task := model.InitTask(result.Platform, relayInfo)
 	task.PrivateData.Execution = service.TaskExecutionSnapshotFromContext(c)
 	task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+	if relayInfo.ChannelMeta != nil && relayInfo.ChannelMeta.ChannelIsMultiKey {
+		// 记录提交时使用的多 Key 索引与指纹，异步任务失败时用于精准禁用故障 key
+		multiKeyIndex := relayInfo.ChannelMeta.ChannelMultiKeyIndex
+		task.PrivateData.ChannelMultiKeyIndex = &multiKeyIndex
+		task.PrivateData.ChannelKeyFingerprint = fmt.Sprintf("%x", common.Sha256Raw([]byte(relayInfo.ChannelMeta.ApiKey)))
+	}
 	task.PrivateData.BillingSource = relayInfo.BillingSource
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
