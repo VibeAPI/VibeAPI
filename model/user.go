@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/go-redis/redis/v8"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -1284,10 +1285,25 @@ func ValidateAccessToken(token string) (*User, error) {
 	return user, nil
 }
 
-// GetUserQuota gets quota from Redis first, falls back to DB if needed
+// GetUserQuota gets quota from Redis first, falls back to DB if needed.
+//
+// The user hash expires after SyncFrequency seconds and cache hits do not
+// extend it, so a request can pass auth on a live hash and then find it gone
+// a few seconds later. A miss must not fail the request ("redis: nil" 500):
+// rehydrate through GetUserCache (same path TryReserveUserQuota uses), and if
+// that is not possible, read the shared database directly.
 func GetUserQuota(id int, fromDB bool) (quota int, err error) {
 	if !fromDB && common.RedisEnabled {
-		return getUserQuotaCache(id)
+		quota, err = getUserQuotaCache(id)
+		if err == nil {
+			return quota, nil
+		}
+		if !errors.Is(err, redis.Nil) {
+			common.SysLog(fmt.Sprintf("user quota cache read failed for user %d, falling back: %v", id, err))
+		}
+		if cached, cacheErr := GetUserCache(id); cacheErr == nil {
+			return cached.Quota, nil
+		}
 	}
 	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
 	if err != nil {
