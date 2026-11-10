@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func stopReasonClaude2OpenAI(reason string) string {
@@ -243,6 +244,13 @@ func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo,
 	}
 }
 
+// isClaudeHeartbeatEvent reports whether an SSE data payload is a Claude ping.
+// Pings keep the connection alive but carry no usage or output, so they must
+// not count as evidence that the upstream produced a billable response.
+func isClaudeHeartbeatEvent(data string) bool {
+	return gjson.Get(data, "type").String() == "ping"
+}
+
 func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
 	if claudeInfo.Usage.PromptTokens == 0 {
 		//上游出错
@@ -305,7 +313,11 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		Usage:        &dto.Usage{},
 	}
 	var err *types.NewAPIError
+	receivedUpstreamEvent := false
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if !isClaudeHeartbeatEvent(data) {
+			receivedUpstreamEvent = true
+		}
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
 			sr.Stop(err)
@@ -314,6 +326,17 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 	info.StreamStatus.RequireTerminal()
 	if err != nil {
 		return nil, err
+	}
+	if !receivedUpstreamEvent {
+		// 上游一个有效事件都没发（空流、只有心跳、超时、读错或首个事件前客户端断开）：
+		// 没有任何用量依据，不能用本地估算的输入 token 计费，按失败处理并退款。
+		// 客户端可能已断开，必须禁止重试，避免为已放弃的请求再次调用上游。
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("claude stream ended without any upstream event: %s", info.StreamStatus.Summary()),
+			types.ErrorCodeEmptyResponse,
+			http.StatusBadGateway,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo)
