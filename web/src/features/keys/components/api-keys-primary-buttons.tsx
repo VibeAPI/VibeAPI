@@ -20,7 +20,7 @@ import { ChevronDown, Globe, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
-import { LoadingState } from '@/components/loading-state'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Item,
@@ -36,6 +36,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useApiInfo } from '@/features/dashboard/hooks/use-status-data'
 import { useStatus } from '@/hooks/use-status'
 
@@ -55,27 +56,65 @@ export function ApiKeysPrimaryButtons() {
     : [
         {
           url: serverAddress || window.location.origin,
-          route: serverAddress ? t('Default API address') : t('Current domain'),
-          description: '',
+          route: t('Default'),
+          description: serverAddress
+            ? t('Default API address')
+            : t('Current domain'),
         },
       ]
+  const primary = addresses[0]
 
   return (
-    <div className='flex flex-wrap gap-2'>
-      <Popover>
-        <PopoverTrigger render={<Button variant='outline' size='sm' />}>
-          <Globe aria-hidden='true' />
-          {t('API Addresses')}
-          <ChevronDown aria-hidden='true' />
-        </PopoverTrigger>
-        <PopoverContent
-          align='end'
-          className='max-h-[min(28rem,var(--available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto'
+    <div className='flex max-w-full min-w-0 flex-wrap items-center gap-2'>
+      {loading ? (
+        <Skeleton className='h-8 w-64 max-w-full' />
+      ) : (
+        <div
+          role='group'
+          aria-label={t('API site URL')}
+          className='bg-muted/40 flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md border pr-0.5 pl-2.5'
         >
-          <PopoverTitle>{t('API Addresses')}</PopoverTitle>
-          {loading ? (
-            <LoadingState inline size='sm' message={t('Loading...')} />
-          ) : (
+          <span className='text-muted-foreground shrink-0 text-xs font-medium max-sm:hidden'>
+            {t('API site URL')}
+          </span>
+          <Badge variant='secondary' className='shrink-0'>
+            {primary.route}
+          </Badge>
+          <code
+            className='max-w-40 min-w-0 truncate text-xs select-text sm:max-w-80'
+            title={primary.url}
+          >
+            {primary.url}
+          </code>
+          <CopyButton
+            value={primary.url}
+            size='icon'
+            className='size-7'
+            tooltip={t('Copy API URL')}
+            aria-label={`${t('Copy API URL')}: ${primary.url}`}
+          />
+        </div>
+      )}
+      {!loading && addresses.length > 1 && (
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant='outline'
+                size='sm'
+                aria-label={t('API Addresses')}
+              />
+            }
+          >
+            <Globe aria-hidden='true' />
+            {t('All addresses ({{count}})', { count: addresses.length })}
+            <ChevronDown aria-hidden='true' />
+          </PopoverTrigger>
+          <PopoverContent
+            align='end'
+            className='max-h-[min(28rem,var(--available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto'
+          >
+            <PopoverTitle>{t('API Addresses')}</PopoverTitle>
             <ItemGroup>
               {addresses.map((address) => (
                 <Item
@@ -109,9 +148,9 @@ export function ApiKeysPrimaryButtons() {
                 </Item>
               ))}
             </ItemGroup>
-          )}
-        </PopoverContent>
-      </Popover>
+          </PopoverContent>
+        </Popover>
+      )}
       <Button size='sm' onClick={() => setOpen('create')}>
         <Plus className='h-4 w-4' />
         {t('Create API Key')}

@@ -7124,6 +7124,8 @@
     "You do not have permission to perform this action.": "この操作を実行する権限がありません。",
     "Your changes have not been saved.": "変更は保存されていません。",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "本人確認が完了しました。連携先でアカウント連携を完了してください。",
-    "Zhipu GLM": "Zhipu GLM"
+    "Zhipu GLM": "Zhipu GLM",
+    "API site URL": "API サイト URL",
+    "All addresses ({{count}})": "すべてのアドレス（{{count}}）"
   }
 }

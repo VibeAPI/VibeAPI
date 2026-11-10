@@ -7124,6 +7124,8 @@
     "You do not have permission to perform this action.": "Bạn không có quyền thực hiện thao tác này.",
     "Your changes have not been saved.": "Các thay đổi chưa được lưu.",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "Danh tính đã được xác minh. Tiếp tục đến nhà cung cấp để hoàn tất liên kết tài khoản.",
-    "Zhipu GLM": "Zhipu GLM"
+    "Zhipu GLM": "Zhipu GLM",
+    "API site URL": "URL trang API",
+    "All addresses ({{count}})": "Tất cả địa chỉ ({{count}})"
   }
 }

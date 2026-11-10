@@ -7124,6 +7124,8 @@
     "You do not have permission to perform this action.": "Vous n’avez pas l’autorisation d’effectuer cette action.",
     "Your changes have not been saved.": "Vos modifications ne sont pas enregistrées.",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "Votre identité a été vérifiée. Poursuivez chez le fournisseur pour terminer la liaison du compte.",
-    "Zhipu GLM": "Zhipu GLM"
+    "Zhipu GLM": "Zhipu GLM",
+    "API site URL": "URL du site API",
+    "All addresses ({{count}})": "Toutes les adresses ({{count}})"
   }
 }

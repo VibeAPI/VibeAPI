@@ -7125,6 +7125,8 @@
     "Your changes have not been saved.": "Your changes have not been saved.",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "Your identity has been verified. Continue to the provider to finish linking your account.",
     "Zhipu GLM": "Zhipu GLM",
-    "Cost in {{currency}} for each second of usage.": "Cost in {{currency}} for each second of usage."
+    "Cost in {{currency}} for each second of usage.": "Cost in {{currency}} for each second of usage.",
+    "API site URL": "API site URL",
+    "All addresses ({{count}})": "All addresses ({{count}})"
   }
 }

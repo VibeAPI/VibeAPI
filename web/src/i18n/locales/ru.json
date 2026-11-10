@@ -7124,6 +7124,8 @@
     "You do not have permission to perform this action.": "У вас нет прав на выполнение этого действия.",
     "Your changes have not been saved.": "Изменения не сохранены.",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "Ваша личность подтверждена. Перейдите к провайдеру, чтобы завершить привязку аккаунта.",
-    "Zhipu GLM": "Zhipu GLM"
+    "Zhipu GLM": "Zhipu GLM",
+    "API site URL": "URL сайта API",
+    "All addresses ({{count}})": "Все адреса ({{count}})"
   }
 }

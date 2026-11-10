@@ -7125,6 +7125,8 @@
     "Your changes have not been saved.": "修改尚未保存。",
     "Your identity has been verified. Continue to the provider to finish linking your account.": "身份验证已通过，请前往服务提供商完成账户绑定。",
     "Zhipu GLM": "智谱GLM",
-    "Cost in {{currency}} for each second of usage.": "每秒使用成本（{{currency}}）。"
+    "Cost in {{currency}} for each second of usage.": "每秒使用成本（{{currency}}）。",
+    "API site URL": "API 站点 URL",
+    "All addresses ({{count}})": "全部地址（{{count}}）"
   }
 }
