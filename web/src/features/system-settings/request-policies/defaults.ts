@@ -46,10 +46,18 @@ export type UpstreamErrorSettings = {
   'upstream_error_setting.mask_status_codes': string
   'upstream_error_setting.mask_keywords': string
 }
+export type RequestRuleSettings = {
+  'request_rule_setting.openai_content_blocks': boolean
+  'request_rule_setting.openai_tools': boolean
+  'request_rule_setting.openai_tool_role': boolean
+  'request_rule_setting.openai_fields': boolean
+  'request_rule_setting.missing_max_tokens': boolean
+}
 export type RequestPolicySettings = RetrySettings &
   HealthSettings &
   FilteringSettings &
   UpstreamErrorSettings &
+  RequestRuleSettings &
   Pick<ChannelAffinitySettings, keyof ChannelAffinitySettings>
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
@@ -78,4 +86,9 @@ export const defaultRequestPolicySettings: RequestPolicySettings = {
   'upstream_error_setting.mask_enabled': true,
   'upstream_error_setting.mask_status_codes': '401-403',
   'upstream_error_setting.mask_keywords': '',
+  'request_rule_setting.openai_content_blocks': true,
+  'request_rule_setting.openai_tools': true,
+  'request_rule_setting.openai_tool_role': true,
+  'request_rule_setting.openai_fields': true,
+  'request_rule_setting.missing_max_tokens': true,
 }

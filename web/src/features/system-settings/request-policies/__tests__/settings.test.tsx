@@ -31,6 +31,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -323,6 +324,37 @@ describe('request policy settings', () => {
       expect(api.patch).toHaveBeenCalledExactlyOnceWith(
         '/api/option/request_policy',
         { options: { 'upstream_error_setting.mask_enabled': 'false' } }
+      )
+    )
+  })
+
+  it('request rules start enabled and saving them unchanged does not write options', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    const rules = within(
+      await screen.findByRole('group', { name: 'Request rules' })
+    )
+    const switches = rules.getAllByRole('switch')
+    expect(switches).toHaveLength(5)
+    for (const rule of switches) expect(rule).toBeChecked()
+    const save = screen.getByRole('button', { name: 'Save Changes' })
+    await userEvent.click(save)
+    await waitFor(() => expect(save).toBeEnabled())
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('turning one request rule off with the keyboard writes only that rule', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    const rule = await screen.findByRole('switch', {
+      name: 'OpenAI-only parameters',
+    })
+    rule.focus()
+    await userEvent.keyboard(' ')
+    expect(rule).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+        '/api/option/request_policy',
+        { options: { 'request_rule_setting.openai_fields': 'false' } }
       )
     )
   })
