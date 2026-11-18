@@ -193,6 +193,57 @@ func TestUnknownModelModifierIsBadRequestWithoutRetry(t *testing.T) {
 	assert.True(t, types.IsSkipRetryError(apiErr))
 }
 
+// A channel with request rules answers a rule match itself, also when the
+// body is passed through, and the match neither reaches the upstream nor
+// allows a retry. Without the switch the same body is relayed unchanged.
+func TestClaudeRequestRulesRejectBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+	const body = `{"model":"claude-opus-5-5","max_tokens":64,"stop":["END"],"messages":[{"role":"user","content":"hi"}]}`
+	for _, tc := range []struct {
+		name         string
+		rulesEnabled bool
+	}{
+		{name: "channel with request rules answers locally", rulesEnabled: true},
+		{name: "channel without request rules relays the body", rulesEnabled: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			received := make(chan []byte, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				payload, err := io.ReadAll(r.Body)
+				if err == nil {
+					received <- payload
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = io.WriteString(w, `{"type":"error","error":{"type":"invalid_request_error","message":"stop: Extra inputs are not permitted"}}`)
+			}))
+			t.Cleanup(upstream.Close)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeAnthropic)
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: true, RequestRulesEnabled: tc.rulesEnabled})
+			request, err := helper.GetAndValidateClaudeRequest(c)
+			require.NoError(t, err)
+
+			apiErr := ClaudeHelper(c, relaycommon.GenRelayInfoClaude(c, request))
+			require.NotNil(t, apiErr)
+			assert.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
+			if !tc.rulesEnabled {
+				require.Len(t, received, 1)
+				assert.JSONEq(t, body, string(<-received))
+				return
+			}
+			assert.Empty(t, received, "a rule match must not reach the upstream")
+			assert.Equal(t, types.ErrorCodeRequestRuleBlocked, apiErr.GetErrorCode())
+			assert.True(t, types.IsSkipRetryError(apiErr))
+			assert.Contains(t, apiErr.Error(), `request rule openai_fields: "stop" is an OpenAI Chat Completions parameter`)
+		})
+	}
+}
+
 func hasHostDiagnosticCode(diagnostics []types.ConversionDiagnostic, code string) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Code == code {

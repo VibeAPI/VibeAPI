@@ -29,6 +29,15 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return types.NewErrorWithStatusCode(fmt.Errorf("invalid request type, expected *dto.ClaudeRequest, got %T", info.Request), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	// A rule match is the caller's error: answer it locally without relaying,
+	// retrying on another channel, or counting it against channel health.
+	if info.ChannelSetting.RequestRulesEnabled {
+		passThrough := model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled
+		if err := helper.CheckClaudeRequestRules(c, claudeReq, passThrough); err != nil {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeRequestRuleBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+	}
+
 	request, err := common.DeepCopy(claudeReq)
 	if err != nil {
 		return types.NewError(fmt.Errorf("failed to copy request to ClaudeRequest: %w", err), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())

@@ -21,6 +21,10 @@ type ChannelSettings struct {
 	ResponsesWebSocketEnabled bool   `json:"responses_websocket_enabled,omitempty"`
 	SystemPrompt              string `json:"system_prompt,omitempty"`
 	SystemPromptOverride      bool   `json:"system_prompt_override,omitempty"`
+	// RequestRulesEnabled answers Claude Messages requests that break an
+	// enabled request rule with a local 400 instead of relaying them, also
+	// when the body is passed through.
+	RequestRulesEnabled bool `json:"request_rules_enabled,omitempty"`
 	// TaskExtendPluginKeys lists the task plugins a New API channel (type 60)
 	// is extended with. The upstream gateway may host many plugins, so the
 	// channel serves every listed plugin's models while the request still pins

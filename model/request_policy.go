@@ -43,6 +43,7 @@ func requestPolicyDefaultOptions() map[string]string {
 		"channel_affinity_setting.": operation_setting.GetChannelAffinitySetting(),
 		"monitor_setting.":          operation_setting.GetMonitorSetting(),
 		"upstream_error_setting.":   operation_setting.GetUpstreamErrorSetting(),
+		"request_rule_setting.":     operation_setting.GetRequestRuleSetting(),
 	} {
 		fields, err := config.ConfigToMap(value)
 		if err != nil {
@@ -71,7 +72,8 @@ func IsRequestPolicyOption(key string) bool {
 	}
 	switch key {
 	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords",
-		"upstream_error_setting.mask_enabled", "upstream_error_setting.mask_status_codes", "upstream_error_setting.mask_keywords":
+		"upstream_error_setting.mask_enabled", "upstream_error_setting.mask_status_codes", "upstream_error_setting.mask_keywords",
+		"request_rule_setting.openai_content_blocks", "request_rule_setting.openai_tools", "request_rule_setting.openai_tool_role", "request_rule_setting.openai_fields", "request_rule_setting.missing_max_tokens":
 		return true
 	}
 	return false
@@ -148,7 +150,8 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 	if _, err := operation_setting.ParseHTTPStatusCodeRanges(raw["upstream_error_setting.mask_status_codes"]); err != nil {
 		return nil, err
 	}
-	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled", "upstream_error_setting.mask_enabled"} {
+	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled", "upstream_error_setting.mask_enabled",
+		"request_rule_setting.openai_content_blocks", "request_rule_setting.openai_tools", "request_rule_setting.openai_tool_role", "request_rule_setting.openai_fields", "request_rule_setting.missing_max_tokens"} {
 		if _, err := strconv.ParseBool(raw[key]); err != nil {
 			return nil, fmt.Errorf("invalid boolean: %s", key)
 		}
