@@ -42,6 +42,7 @@ func requestPolicyDefaultOptions() map[string]string {
 	for prefix, value := range map[string]any{
 		"channel_affinity_setting.": operation_setting.GetChannelAffinitySetting(),
 		"monitor_setting.":          operation_setting.GetMonitorSetting(),
+		"upstream_error_setting.":   operation_setting.GetUpstreamErrorSetting(),
 	} {
 		fields, err := config.ConfigToMap(value)
 		if err != nil {
@@ -69,7 +70,8 @@ func IsRequestPolicyOption(key string) bool {
 		return true
 	}
 	switch key {
-	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords":
+	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords",
+		"upstream_error_setting.mask_enabled", "upstream_error_setting.mask_status_codes", "upstream_error_setting.mask_keywords":
 		return true
 	}
 	return false
@@ -143,7 +145,10 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 		return nil, err
 	}
 	snapshot.DisableKeywords = strings.Split(raw["AutomaticDisableKeywords"], "\n")
-	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled"} {
+	if _, err := operation_setting.ParseHTTPStatusCodeRanges(raw["upstream_error_setting.mask_status_codes"]); err != nil {
+		return nil, err
+	}
+	for _, key := range []string{"CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "AutomaticEnableChannelEnabled", "monitor_setting.auto_test_channel_enabled", "upstream_error_setting.mask_enabled"} {
 		if _, err := strconv.ParseBool(raw[key]); err != nil {
 			return nil, fmt.Errorf("invalid boolean: %s", key)
 		}

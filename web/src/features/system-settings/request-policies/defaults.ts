@@ -41,9 +41,15 @@ export type FilteringSettings = Pick<
   SecuritySettings,
   'CheckSensitiveEnabled' | 'CheckSensitiveOnPromptEnabled' | 'SensitiveWords'
 >
+export type UpstreamErrorSettings = {
+  'upstream_error_setting.mask_enabled': boolean
+  'upstream_error_setting.mask_status_codes': string
+  'upstream_error_setting.mask_keywords': string
+}
 export type RequestPolicySettings = RetrySettings &
   HealthSettings &
   FilteringSettings &
+  UpstreamErrorSettings &
   Pick<ChannelAffinitySettings, keyof ChannelAffinitySettings>
 
 export const defaultRequestPolicySettings: RequestPolicySettings = {
@@ -69,4 +75,7 @@ export const defaultRequestPolicySettings: RequestPolicySettings = {
   CheckSensitiveEnabled: false,
   CheckSensitiveOnPromptEnabled: false,
   SensitiveWords: '',
+  'upstream_error_setting.mask_enabled': true,
+  'upstream_error_setting.mask_status_codes': '401-403',
+  'upstream_error_setting.mask_keywords': '',
 }

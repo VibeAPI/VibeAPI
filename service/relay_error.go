@@ -1,11 +1,14 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -61,6 +64,27 @@ func ShouldRetryRelayError(c *gin.Context, openaiErr *types.NewAPIError, retryTi
 	return DecideRelayRetry(c, openaiErr, retryTimes).Action == "retry"
 }
 
+// UserFacingRelayError returns the error shown to API callers and in their
+// usage logs. Upstream errors matched by the upstream error setting (rejected
+// credentials, exhausted quota or balance at any upstream level, or a model
+// the upstream cannot serve) become the gateway's own "no available channel"
+// error, so callers neither see upstream groups nor blame their own key or
+// balance. Server logs and administrator log views keep the original. The
+// boolean reports whether the error was replaced.
+func UserFacingRelayError(c *gin.Context, err *types.NewAPIError) (*types.NewAPIError, bool) {
+	if !types.IsUpstreamError(err) {
+		return err, false
+	}
+	if !operation_setting.GetUpstreamErrorSetting().ShouldMask(err.StatusCode, string(err.GetErrorCode())+" "+err.Error()) {
+		return err, false
+	}
+	message := i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{
+		"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		"Model": common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
+	})
+	return types.NewErrorWithStatusCode(errors.New(message), types.ErrorCodeModelNotFound, http.StatusServiceUnavailable), true
+}
+
 func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError, relayInfo *relaycommon.RelayInfo) {
 	if err == nil {
 		return
@@ -83,9 +107,20 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		if c.Request != nil && c.Request.URL != nil {
 			other.SetPublic("request_path", c.Request.URL.Path)
 		}
-		other.SetPublic("error_type", err.GetErrorType())
-		other.SetPublic("error_code", err.GetErrorCode())
-		other.SetPublic("status_code", err.StatusCode)
+		// The log owner sees the same error as the API response; the stored
+		// content and admin_info keep the upstream original for operators.
+		visibleErr, replaced := UserFacingRelayError(c, err)
+		if replaced {
+			other.SetUserContent(visibleErr.MaskSensitiveErrorWithStatusCode())
+			other.SetAdmin("upstream_error", map[string]any{
+				"error_type":  err.GetErrorType(),
+				"error_code":  err.GetErrorCode(),
+				"status_code": err.StatusCode,
+			})
+		}
+		other.SetPublic("error_type", visibleErr.GetErrorType())
+		other.SetPublic("error_code", visibleErr.GetErrorCode())
+		other.SetPublic("status_code", visibleErr.StatusCode)
 		AppendRelayLogAdminInfo(c, relayInfo, other)
 		AppendResponseModelLogInfo(relayInfo, other)
 		AppendTaskPluginContextAuditInfo(c, other)

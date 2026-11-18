@@ -281,6 +281,63 @@ describe('request policy settings', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 
+  it('saving unchanged upstream error settings does not write options', async () => {
+    await renderPolicies('/system-settings/request-policies/upstream-errors')
+    const save = await screen.findByRole('button', { name: 'Save Changes' })
+    await userEvent.click(save)
+    await waitFor(() => expect(save).toBeEnabled())
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('editing hidden upstream error keywords writes only that option', async () => {
+    await renderPolicies('/system-settings/request-policies/upstream-errors')
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Hidden error keywords' }),
+      { target: { value: 'upstream maintenance\r\n余额不足' } }
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+        '/api/option/request_policy',
+        {
+          options: {
+            'upstream_error_setting.mask_keywords':
+              'upstream maintenance\n余额不足',
+          },
+        }
+      )
+    )
+  })
+
+  it('turning upstream error hiding off with the keyboard writes only the switch', async () => {
+    await renderPolicies('/system-settings/request-policies/upstream-errors')
+    const hide = await screen.findByRole('switch', {
+      name: 'Hide upstream account errors',
+    })
+    expect(hide).toBeChecked()
+    hide.focus()
+    await userEvent.keyboard(' ')
+    expect(hide).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
+        '/api/option/request_policy',
+        { options: { 'upstream_error_setting.mask_enabled': 'false' } }
+      )
+    )
+  })
+
+  it('invalid always-hidden status codes show validation and do not write options', async () => {
+    await renderPolicies('/system-settings/request-policies/upstream-errors')
+    const codes = await screen.findByRole('textbox', {
+      name: 'Always-hidden status codes',
+    })
+    fireEvent.change(codes, { target: { value: '599-500' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(codes).toHaveAttribute('aria-invalid', 'true'))
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
   it('a rejected save keeps the edited retry value and allows another save', async () => {
     vi.mocked(api.patch).mockResolvedValue({
       data: { success: false, message: 'Save rejected' },

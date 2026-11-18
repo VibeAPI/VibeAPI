@@ -81,6 +81,12 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 			require.NoError(t, UpdateOption("AutomaticRetryStatusCodes", "429,500-503"))
 			assert.Equal(t, "429,500-503", CurrentRequestPolicy().Options["AutomaticRetryStatusCodes"])
 			assert.Equal(t, "429,500-503", operation_setting.AutomaticRetryStatusCodesToString())
+			require.NoError(t, UpdateRequestPolicyOptions(map[string]string{
+				"upstream_error_setting.mask_enabled":      "false",
+				"upstream_error_setting.mask_status_codes": "401,403",
+				"upstream_error_setting.mask_keywords":     "upstream maintenance",
+			}))
+			assert.Equal(t, operation_setting.UpstreamErrorSetting{MaskEnabled: false, MaskStatusCodes: "401,403", MaskKeywords: "upstream maintenance"}, *operation_setting.GetUpstreamErrorSetting(), "the runtime upstream error setting follows the same write")
 			assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"request_policy_setting.mode": "off"}), "the removed mode switch is not a policy option")
 			assert.False(t, CurrentRequestPolicy().Affinity.Rules[0].SkipRetryOnFailure)
 			assert.Equal(t, rules, CurrentRequestPolicy().Options["channel_affinity_setting.rules"])
@@ -99,6 +105,11 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"RetryTimes": value}))
 				assert.Same(t, snapshot, CurrentRequestPolicy())
 			}
+			for key, value := range map[string]string{"upstream_error_setting.mask_status_codes": "403-401", "upstream_error_setting.mask_enabled": "maybe"} {
+				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{key: value}), key)
+				assert.Same(t, snapshot, CurrentRequestPolicy())
+			}
+			assert.Equal(t, "401,403", operation_setting.GetUpstreamErrorSetting().MaskStatusCodes, "a rejected save keeps the runtime setting")
 			assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"channel_affinity_setting.rules": "[", "RetryTimes": "8"}))
 			assert.Same(t, snapshot, CurrentRequestPolicy())
 			var option Option

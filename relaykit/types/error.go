@@ -94,6 +94,7 @@ type NewAPIError struct {
 	RelayError     any
 	skipRetry      bool
 	recordErrorLog *bool
+	fromUpstream   bool
 	errorType      ErrorType
 	errorCode      ErrorCode
 	StatusCode     int
@@ -405,6 +406,18 @@ func ErrOptionWithHideErrMsg(replaceStr string) NewAPIErrorOptions {
 		}
 		e.Err = errors.New(replaceStr)
 	}
+}
+
+// ErrOptionWithUpstreamOrigin marks an error whose status and message were
+// returned by the upstream provider instead of being produced by the gateway.
+func ErrOptionWithUpstreamOrigin() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.fromUpstream = true
+	}
+}
+
+func IsUpstreamError(e *NewAPIError) bool {
+	return e != nil && e.fromUpstream
 }
 
 func IsRecordErrorLog(e *NewAPIError) bool {

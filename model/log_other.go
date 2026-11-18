@@ -12,6 +12,9 @@ const (
 	logOtherAdminInfoKey = "admin_info"
 	logOtherRootInfoKey  = "root_info"
 	logOtherAuditInfoKey = "audit_info"
+	// logOtherUserContentKey replaces the log content returned to the log
+	// owner, while the stored content stays the operator-facing text.
+	logOtherUserContentKey = "user_content"
 )
 
 // legacySensitiveLogOtherKeys are historical top-level fields that must never
@@ -72,6 +75,12 @@ func (o *LogOther) MergePublic(values map[string]any) {
 	for key, value := range values {
 		o.SetPublic(key, value)
 	}
+}
+
+// SetUserContent sets the content that self/token log APIs return instead of
+// the stored content, which administrator log views keep showing.
+func (o *LogOther) SetUserContent(content string) {
+	o.SetPublic(logOtherUserContentKey, content)
 }
 
 func (o *LogOther) SetAdmin(key string, value any) bool {

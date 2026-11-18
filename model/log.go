@@ -268,6 +268,12 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
+		if logs[i].Type == LogTypeError {
+			other, _ := common.StrToMap(logs[i].Other)
+			if content, ok := other[logOtherUserContentKey].(string); ok && content != "" {
+				logs[i].Content = content
+			}
+		}
 		logs[i].Other = formatLogOtherJSON(logs[i].Other, logOtherVisibilityUser)
 	}
 	assignDisplayLogIds(logs, startIdx)
