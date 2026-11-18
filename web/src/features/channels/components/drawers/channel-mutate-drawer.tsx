@@ -105,6 +105,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { SecureVerificationDialog } from '@/features/auth/secure-verification'
+import { RelatedPolicyLink } from '@/features/system-settings/request-policies/related-policy-link'
 import { PluginIcon } from '@/features/task-plugins/components/plugin-icon'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { useHiddenClickUnlock } from '@/hooks/use-hidden-click-unlock'
@@ -300,6 +301,7 @@ const SENSITIVE_FORM_FIELDS = [
   'http_protocol',
   'http2_connection_shards',
   'pass_through_body_enabled',
+  'request_rules_enabled',
   'return_request_model_name',
   'responses_websocket_enabled',
   'system_prompt',
@@ -1893,6 +1895,33 @@ export function ChannelMutateDrawer({
                   if (confirmed) field.onChange(true)
                 })
               }}
+            />
+          </FormControl>
+        </FormItem>
+      )}
+    />
+  )
+
+  const requestRulesFields = (
+    <FormField
+      control={form.control}
+      name='request_rules_enabled'
+      render={({ field }) => (
+        <FormItem className='flex items-center justify-between px-4 py-3'>
+          <div className='space-y-0.5'>
+            <FormLabel>{t('Block invalid requests')}</FormLabel>
+            <FormDescription>
+              {t(
+                'Answers /v1/messages requests that break an enabled request rule with a 400 error instead of relaying them, also when the body is passed through.'
+              )}
+              <RelatedPolicyLink section='request-rules' />
+            </FormDescription>
+          </div>
+          <FormControl>
+            <Switch
+              disabled={sensitiveLocked}
+              checked={field.value}
+              onCheckedChange={field.onChange}
             />
           </FormControl>
         </FormItem>
@@ -4714,6 +4743,7 @@ export function ChannelMutateDrawer({
                 {thinkingFields}
                 {currentType !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
                   passthroughFields}
+                {requestRulesFields}
                 {returnRequestModelNameFields}
                 {systemPromptFields}
                 {systemPromptOverrideFields}

@@ -287,6 +287,7 @@ export const channelFormSchema = z
     http_protocol: z.enum(['auto', 'http1']).optional(),
     http2_connection_shards: z.number().int().optional(),
     pass_through_body_enabled: z.boolean().optional(),
+    request_rules_enabled: z.boolean().optional(),
     return_request_model_name: z.boolean().optional(),
     responses_websocket_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
@@ -480,6 +481,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   http_protocol: HTTP_PROTOCOL_AUTO,
   http2_connection_shards: 1,
   pass_through_body_enabled: false,
+  request_rules_enabled: false,
   return_request_model_name: false,
   responses_websocket_enabled: false,
   system_prompt: '',
@@ -525,6 +527,7 @@ export function transformChannelToFormDefaults(
     http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
     http2_connection_shards: 1,
     pass_through_body_enabled: false,
+    request_rules_enabled: false,
     return_request_model_name: false,
     responses_websocket_enabled: false,
     system_prompt: '',
@@ -547,6 +550,7 @@ export function transformChannelToFormDefaults(
         http_protocol: protocol,
         http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
+        request_rules_enabled: parsed.request_rules_enabled === true,
         return_request_model_name: parsed.return_request_model_name === true,
         responses_websocket_enabled:
           parsed.responses_websocket_enabled === true,
@@ -686,6 +690,7 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
     pass_through_body_enabled:
       formData.type !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
       formData.pass_through_body_enabled === true,
+    request_rules_enabled: formData.request_rules_enabled === true,
     return_request_model_name: formData.return_request_model_name === true,
     responses_websocket_enabled:
       supportsResponsesWebSocket(formData.type) &&

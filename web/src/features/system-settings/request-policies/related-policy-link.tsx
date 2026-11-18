@@ -9,7 +9,9 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { policyLabel } from './policy-label'
 
-export function RelatedPolicyLink(props: { section: 'routing' | 'health' }) {
+export function RelatedPolicyLink(props: {
+  section: 'routing' | 'health' | 'request-rules'
+}) {
   const { t } = useTranslation()
   const isRoot = useAuthStore(
     (state) => state.auth.user?.role === ROLE.SUPER_ADMIN

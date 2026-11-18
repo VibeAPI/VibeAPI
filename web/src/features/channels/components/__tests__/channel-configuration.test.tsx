@@ -1232,6 +1232,31 @@ test('quick options and detailed settings share changes across tabs and save the
   })
 })
 
+test('turning on invalid request blocking for a pass-through channel saves both switches', async () => {
+  editingChannel.setting = JSON.stringify({ pass_through_body_enabled: true })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const user = userEvent.setup()
+  render(<ConfigurationHarness currentRow={editingChannel} />)
+  await screen.findByDisplayValue('Existing channel')
+
+  await user.click(screen.getByRole('tab', { name: /Request & Response/ }))
+  const block = screen.getByRole('switch', { name: 'Block invalid requests' })
+  expect(block).not.toBeChecked()
+  block.focus()
+  await user.keyboard(' ')
+  expect(block).toBeChecked()
+  await user.click(screen.getByRole('button', { name: 'Update Channel' }))
+
+  await waitFor(() => expect(put).toHaveBeenCalled())
+  const payload = put.mock.calls[0]?.[1] as { setting: string }
+  expect(JSON.parse(payload.setting)).toMatchObject({
+    pass_through_body_enabled: true,
+    request_rules_enabled: true,
+  })
+})
+
 test('quick options show only applicable shortcuts when the provider changes', async () => {
   const user = userEvent.setup()
   render(<ConfigurationHarness />)
