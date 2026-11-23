@@ -14,6 +14,9 @@ RestartSec=5s
 UMask=0007
 RuntimeDirectory=vibeapi-updater
 RuntimeDirectoryMode=0750
+# Keep the directory across restarts: the web container bind-mounts it and
+# would not see a directory recreated by a restart.
+RuntimeDirectoryPreserve=yes
 StateDirectory=vibeapi-updater
 StateDirectoryMode=0700
 NoNewPrivileges=true

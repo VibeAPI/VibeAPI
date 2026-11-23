@@ -4,6 +4,7 @@
   "compose_files": ["/opt/vibeapi/docker-compose.yml"],
   "compose_project": "vibeapi",
   "compose_service": "new-api",
+  "compose_profiles": [],
   "image_repository": "heself/vibeapi",
   "bootstrap_repositories": ["calciumion/new-api"],
   "release_repository": "VibeAPI/VibeAPI",

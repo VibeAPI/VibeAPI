@@ -467,15 +467,25 @@ func (e *Engine) resolveRelease(ctx context.Context, releaseID, expectedDigest s
 	return release, nil
 }
 
-func (e *Engine) composeArgs(command ...string) []string {
+// composeBase returns the arguments every compose command starts with: the
+// project, its profiles and files, and last the managed override once one has
+// been committed.
+func (e *Engine) composeBase() []string {
 	args := []string{"compose", "--project-name", e.config.ComposeProject}
+	for _, profile := range e.config.ComposeProfiles {
+		args = append(args, "--profile", profile)
+	}
 	for _, path := range e.config.ComposeFiles {
 		args = append(args, "-f", path)
 	}
 	if _, err := os.Stat(e.managedOverridePath()); err == nil {
 		args = append(args, "-f", e.managedOverridePath())
 	}
-	return append(args, command...)
+	return args
+}
+
+func (e *Engine) composeArgs(command ...string) []string {
+	return append(e.composeBase(), command...)
 }
 
 func randomID() (string, error) {
@@ -605,15 +615,7 @@ func (e *Engine) commitManagedOverride(image string) error {
 }
 
 func (e *Engine) composeWithOverride(override string, command ...string) []string {
-	args := []string{"compose", "--project-name", e.config.ComposeProject}
-	for _, path := range e.config.ComposeFiles {
-		args = append(args, "-f", path)
-	}
-	if _, err := os.Stat(e.managedOverridePath()); err == nil {
-		args = append(args, "-f", e.managedOverridePath())
-	}
-	args = append(args, "-f", override)
-	return append(args, command...)
+	return append(append(e.composeBase(), "-f", override), command...)
 }
 
 func (e *Engine) Wait(ctx context.Context) error {

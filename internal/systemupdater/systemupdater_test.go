@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -94,6 +95,36 @@ func TestConfigRejectsUnscopedComposeAndShortTokens(t *testing.T) {
 	_, err := ValidateConfig(config)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "absolute path")
+
+	valid := testConfig(t).Config
+	valid.ComposeProfiles = []string{"cutover --project-directory /"}
+	_, err = ValidateConfig(valid)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid compose profile")
+}
+
+func TestComposeCommandsEnableConfiguredProfiles(t *testing.T) {
+	config := testConfig(t)
+	config.ComposeService = "vibeapi"
+	runner := &fakeRunner{outputs: func(args []string) ([]byte, error) {
+		// Like docker compose, a service in an inactive profile is not listed.
+		if slices.Contains(args, "--profile") {
+			return []byte("redis\nvibeapi\n"), nil
+		}
+		return []byte("redis\n"), nil
+	}}
+	require.Error(t, NewEngine(config, staticCatalog{}, runner).validateCompose(context.Background()), "a profiled service is invisible without its profile")
+
+	config.ComposeProfiles = []string{"cutover"}
+	engine := NewEngine(config, staticCatalog{}, runner)
+	require.NoError(t, engine.validateCompose(context.Background()))
+	override := filepath.Join(config.StateDir, "next.yaml")
+	for _, args := range [][]string{
+		engine.composeArgs("ps", "-q", "vibeapi"),
+		engine.composeWithOverride(override, "up", "-d", "--no-deps", "--force-recreate", "vibeapi"),
+	} {
+		assert.Equal(t, []string{"compose", "--project-name", "vibeapi", "--profile", "cutover"}, args[:5])
+	}
 }
 
 func TestHTTPHandlerRequiresBearerToken(t *testing.T) {

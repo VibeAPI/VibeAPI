@@ -16,11 +16,14 @@ import (
 var composeNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$`)
 
 type Config struct {
-	SocketPath            string   `json:"socket_path"`
-	StateDir              string   `json:"state_dir"`
-	ComposeFiles          []string `json:"compose_files"`
-	ComposeProject        string   `json:"compose_project"`
-	ComposeService        string   `json:"compose_service"`
+	SocketPath     string   `json:"socket_path"`
+	StateDir       string   `json:"state_dir"`
+	ComposeFiles   []string `json:"compose_files"`
+	ComposeProject string   `json:"compose_project"`
+	ComposeService string   `json:"compose_service"`
+	// ComposeProfiles are enabled on every compose command, so a service that
+	// belongs to a profile can be inspected and replaced.
+	ComposeProfiles       []string `json:"compose_profiles"`
 	ImageRepository       string   `json:"image_repository"`
 	BootstrapRepositories []string `json:"bootstrap_repositories"`
 	ReleaseRepository     string   `json:"release_repository"`
@@ -110,6 +113,11 @@ func ValidateConfig(cfg Config) (RuntimeConfig, error) {
 	}
 	if !composeNamePattern.MatchString(cfg.ComposeService) {
 		return RuntimeConfig{}, fmt.Errorf("invalid compose_service")
+	}
+	for _, profile := range cfg.ComposeProfiles {
+		if !composeNamePattern.MatchString(profile) {
+			return RuntimeConfig{}, fmt.Errorf("invalid compose profile %q", profile)
+		}
 	}
 	if cfg.ImageRepository == "" || strings.ContainsAny(cfg.ImageRepository, "@ \t\r\n") {
 		return RuntimeConfig{}, fmt.Errorf("image_repository must be a repository without tag or digest")
