@@ -210,6 +210,7 @@ import type { Channel } from '../../types'
 import { ChannelPluginExtensions } from '../channel-plugin-extensions'
 import { ChannelQuickOptions } from '../channel-quick-options'
 import { ChannelTypeLogo } from '../channel-type-badge'
+import { ChannelUserRulesSetting } from '../channel-user-rules-setting'
 import { useChannels } from '../channels-provider'
 import { AdvancedCustomEditorDialog } from '../dialogs/advanced-custom-editor-dialog'
 import { ConfigureModelsDialog } from '../dialogs/configure-models-dialog'
@@ -318,7 +319,7 @@ const SENSITIVE_FORM_FIELDS = [
   'upstream_model_update_check_enabled',
   'upstream_model_update_auto_sync_enabled',
   'upstream_model_update_ignored_models',
-  'blacklist_user_ids',
+  'user_rules',
 ] satisfies (keyof ChannelFormValues)[]
 
 function parseSettingsRecord(
@@ -2316,31 +2317,7 @@ export function ChannelMutateDrawer({
         )}
       />
 
-      <FormField
-        control={form.control}
-        name='blacklist_user_ids'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Channel user blacklist')}</FormLabel>
-            <FormControl>
-              <Textarea
-                rows={3}
-                disabled={sensitiveLocked}
-                placeholder={t(
-                  'Enter user IDs separated by commas or new lines'
-                )}
-                {...field}
-              />
-            </FormControl>
-            <FormDescription>
-              {t(
-                'Requests from these users skip this channel and continue with the next available priority'
-              )}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      <ChannelUserRulesSetting disabled={sensitiveLocked} />
     </div>
   )
 

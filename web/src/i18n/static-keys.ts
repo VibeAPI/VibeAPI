@@ -840,4 +840,14 @@ export const STATIC_I18N_KEYS = [
   // Request rules JSON parse errors (request-rules/rules.ts)
   'Rules JSON is not valid JSON',
   'Rules JSON must be an array of rules',
+  // Channel user rules validation errors (channels/lib/channel-user-rules.ts)
+  'User rules must be a JSON array of rule objects',
+  'User rules cannot contain more than 1000 rules',
+  'User rules only support user_id, models, non_stream_only and rpm',
+  'Each user rule needs a positive user_id',
+  'models must be a list of non-empty model names',
+  'non_stream_only must be true or false',
+  'rpm must be a whole number from 0 to 1000000',
+  'Enter a positive user ID',
+  'Enter a whole number from 0 to 1000000',
 ] as const

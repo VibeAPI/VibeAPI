@@ -41,6 +41,11 @@ import {
   validateAdvancedCustomConfig,
 } from './advanced-custom'
 import { readTaskExtendPluginKeys } from './channel-plugin-extensions'
+import {
+  formatChannelUserRules,
+  parseChannelUserRules,
+  splitChannelUserRules,
+} from './channel-user-rules'
 import { supportsResponsesWebSocket } from './responses-websocket'
 
 // ============================================================================
@@ -190,22 +195,6 @@ function isVertexJsonKey(value: string | undefined): boolean {
   }
 }
 
-function parseBlacklistUserIds(value: string | undefined): number[] | null {
-  const parts = String(value || '')
-    .split(/[\s,]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-  const ids = parts.map(Number)
-  if (
-    ids.length > 1000 ||
-    ids.some((id) => !Number.isSafeInteger(id) || id <= 0) ||
-    new Set(ids).size !== ids.length
-  ) {
-    return null
-  }
-  return ids
-}
-
 function addRequiredIssue(
   ctx: z.RefinementCtx,
   path: string,
@@ -240,7 +229,7 @@ export const channelFormSchema = z
     weight: z.number().optional(),
     test_model: z.string().optional(),
     auto_ban: z.number().optional(),
-    blacklist_user_ids: z.string().optional(),
+    user_rules: z.string().optional(),
     status: z.number(),
     status_code_mapping: z
       .string()
@@ -313,6 +302,10 @@ export const channelFormSchema = z
     upstream_model_update_ignored_models: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    const userRulesError = parseChannelUserRules(data.user_rules).error
+    if (userRulesError) {
+      addRequiredIssue(ctx, 'user_rules', userRulesError)
+    }
     if (
       [
         3,
@@ -460,7 +453,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   weight: 0,
   test_model: '',
   auto_ban: 1,
-  blacklist_user_ids: '',
+  user_rules: '',
   status: CHANNEL_STATUS.ENABLED,
   status_code_mapping: '',
   tag: '',
@@ -581,7 +574,7 @@ export function transformChannelToFormDefaults(
   let upstreamModelUpdateAutoSyncEnabled = false
   let upstreamModelUpdateIgnoredModels = ''
   let advancedCustom = ''
-  let blacklistUserIds = ''
+  let userRules = ''
 
   if (channel.settings) {
     try {
@@ -599,9 +592,10 @@ export function transformChannelToFormDefaults(
       claudeBetaQuery = parsed.claude_beta_query === true
       ollamaOpenAIChat = parsed.ollama_openai_chat === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
-      blacklistUserIds = Array.isArray(parsed.blacklist_user_ids)
-        ? parsed.blacklist_user_ids.join(', ')
-        : ''
+      userRules = formatChannelUserRules(
+        parsed.blacklist_user_ids,
+        parsed.user_rules
+      )
       upstreamModelUpdateCheckEnabled =
         parsed.upstream_model_update_check_enabled === true
       upstreamModelUpdateAutoSyncEnabled =
@@ -633,7 +627,7 @@ export function transformChannelToFormDefaults(
     weight: channel.weight || 0,
     test_model: channel.test_model || '',
     auto_ban: channel.auto_ban ?? 1,
-    blacklist_user_ids: blacklistUserIds,
+    user_rules: userRules,
     status: channel.status,
     status_code_mapping: channel.status_code_mapping || '',
     tag: channel.tag || '',
@@ -731,11 +725,21 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   }
 
-  const blacklistUserIds = parseBlacklistUserIds(formData.blacklist_user_ids)
-  if (blacklistUserIds && blacklistUserIds.length > 0) {
-    settingsObj.blacklist_user_ids = blacklistUserIds
-  } else {
-    delete settingsObj.blacklist_user_ids
+  const parsedUserRules = parseChannelUserRules(formData.user_rules)
+  if (parsedUserRules.rules) {
+    const { blacklistUserIds, userRules } = splitChannelUserRules(
+      parsedUserRules.rules
+    )
+    if (blacklistUserIds.length > 0) {
+      settingsObj.blacklist_user_ids = blacklistUserIds
+    } else {
+      delete settingsObj.blacklist_user_ids
+    }
+    if (userRules.length > 0) {
+      settingsObj.user_rules = userRules
+    } else {
+      delete settingsObj.user_rules
+    }
   }
 
   // Add vertex_key_type for Vertex AI channels (type 41)
