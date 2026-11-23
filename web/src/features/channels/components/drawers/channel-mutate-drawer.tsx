@@ -1912,7 +1912,7 @@ export function ChannelMutateDrawer({
             <FormLabel>{t('Block invalid requests')}</FormLabel>
             <FormDescription>
               {t(
-                'Answers /v1/messages requests that break an enabled request rule with a 400 error instead of relaying them, also when the body is passed through.'
+                'Answers requests that match an enabled request rule with that rule’s error instead of relaying them, also when the body is passed through. Covers Claude, OpenAI Chat, Responses and Gemini requests.'
               )}
               <RelatedPolicyLink section='request-rules' />
             </FormDescription>

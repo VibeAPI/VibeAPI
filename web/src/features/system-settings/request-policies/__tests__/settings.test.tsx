@@ -54,6 +54,54 @@ type PolicyBeforeLoad = (context: { params: { section: string } }) => void
 let queryClient: QueryClient
 let settings: RequestPolicySettings
 
+const RULE_PRESETS = [
+  {
+    id: 'openai_fields',
+    name: 'OpenAI-only parameters',
+    description: 'Parameters such as stop and stream_options.',
+    preset: true,
+    enabled: true,
+    endpoints: ['claude_messages'],
+    model_regex: '',
+    only_pass_through: true,
+    match: 'any',
+    conditions: [
+      { source: 'json', path: '@keys', op: 'regex', value: '^(stop|n)$' },
+    ],
+    response: {
+      status: 400,
+      code: 'request_rule_blocked',
+      message: 'request rule openai_fields: "{{value}}" is OpenAI-only',
+    },
+  },
+  {
+    id: 'missing_max_tokens',
+    name: 'Missing max_tokens',
+    description: 'Claude requires max_tokens.',
+    preset: true,
+    enabled: true,
+    endpoints: ['claude_messages'],
+    model_regex: '',
+    only_pass_through: true,
+    match: 'all',
+    conditions: [
+      { source: 'json', path: 'max_tokens', op: 'not_exists', value: '' },
+    ],
+    response: {
+      status: 400,
+      code: 'request_rule_blocked',
+      message: 'request rule missing_max_tokens: max_tokens is required',
+    },
+  },
+]
+
+function savedRules() {
+  const [, payload] = vi.mocked(api.patch).mock.calls[0]
+  const options = (payload as { options: Record<string, string> }).options
+  expect(Object.keys(options)).toEqual(['request_rule_setting.rules'])
+  return JSON.parse(options['request_rule_setting.rules'])
+}
+
 function optionsResponse() {
   return {
     success: true,
@@ -127,6 +175,7 @@ beforeEach(() => {
     CheckSensitiveEnabled: true,
     CheckSensitiveOnPromptEnabled: true,
     SensitiveWords: 'blocked',
+    'request_rule_setting.rules': JSON.stringify(RULE_PRESETS),
     'channel_affinity_setting.rules': JSON.stringify([
       {
         name: 'Existing session rule',
@@ -161,6 +210,7 @@ beforeEach(() => {
                 String(value),
               ])
             ),
+            request_rule_presets: RULE_PRESETS,
           },
         },
       }
@@ -328,34 +378,181 @@ describe('request policy settings', () => {
     )
   })
 
-  it('request rules start enabled and saving them unchanged does not write options', async () => {
+  it('request rules list the stored rules and saving them unchanged writes nothing', async () => {
     await renderPolicies('/system-settings/request-policies/request-rules')
-    const rules = within(
-      await screen.findByRole('group', { name: 'Request rules' })
-    )
-    const switches = rules.getAllByRole('switch')
-    expect(switches).toHaveLength(5)
-    for (const rule of switches) expect(rule).toBeChecked()
+    const table = await screen.findByRole('region', {
+      name: 'Request rules table',
+    })
+    expect(within(table).getByText('OpenAI-only parameters')).toBeVisible()
+    expect(within(table).getByText('Missing max_tokens')).toBeVisible()
     const save = screen.getByRole('button', { name: 'Save Changes' })
     await userEvent.click(save)
     await waitFor(() => expect(save).toBeEnabled())
     expect(api.patch).not.toHaveBeenCalled()
   })
 
-  it('turning one request rule off with the keyboard writes only that rule', async () => {
+  it('turning a rule off with the keyboard saves the rules with only that rule disabled', async () => {
     await renderPolicies('/system-settings/request-policies/request-rules')
-    const rule = await screen.findByRole('switch', {
-      name: 'OpenAI-only parameters',
+    const toggle = await screen.findByRole('switch', {
+      name: 'Enable OpenAI-only parameters',
     })
-    rule.focus()
+    toggle.focus()
     await userEvent.keyboard(' ')
-    expect(rule).not.toBeChecked()
+    expect(toggle).not.toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledOnce())
+    expect(savedRules()).toEqual([
+      { ...RULE_PRESETS[0], enabled: false },
+      RULE_PRESETS[1],
+    ])
+  })
+
+  it('adding a template opens it in the editor and saving appends it to the rules', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    await userEvent.click(
+      screen.getByRole('menuitem', {
+        name: 'Assistant prefill on claude-sonnet-4-6',
+      })
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue(
+      'Assistant prefill on claude-sonnet-4-6'
+    )
+    expect(
+      within(dialog).getByRole('textbox', { name: 'Field path or header name' })
+    ).toHaveValue('messages.-1.role')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
     await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
-        '/api/option/request_policy',
-        { options: { 'request_rule_setting.openai_fields': 'false' } }
-      )
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Request rules table' })
+      ).getByText('Assistant prefill on claude-sonnet-4-6')
+    ).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledOnce())
+    const rules = savedRules()
+    expect(rules).toHaveLength(3)
+    expect(rules[2]).toMatchObject({
+      enabled: true,
+      endpoints: ['claude_messages'],
+      model_regex: '^claude-sonnet-4-6',
+      conditions: [
+        {
+          source: 'json',
+          path: 'messages.-1.role',
+          op: 'regex',
+          value: '^assistant$',
+        },
+      ],
+      response: { status: 400, code: 'request_rule_blocked' },
+    })
+  })
+
+  it('a regex condition without a regex keeps the rule editor open with an error', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Blank Rule' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), {
+      target: { value: 'No prefill' },
+    })
+    fireEvent.change(
+      within(dialog).getByRole('textbox', {
+        name: 'Field path or header name',
+      }),
+      { target: { value: 'messages.-1.role' } }
+    )
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: 'Error message' }),
+      { target: { value: 'Prefill is not supported.' } }
+    )
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(await within(dialog).findByText('Regex is required')).toBeVisible()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('invalid rules JSON stays in the JSON view and is not saved', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    await userEvent.click(await screen.findByRole('tab', { name: 'JSON' }))
+    const editor = await screen.findByRole('textbox', { name: 'Rules JSON' })
+    fireEvent.input(editor, { target: { value: '[' } })
+    expect(screen.getByText('Rules JSON is not valid JSON')).toBeVisible()
+    await userEvent.click(screen.getByRole('tab', { name: 'Visual' }))
+    expect(screen.getByRole('tab', { name: 'JSON' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('testing a request sends the draft rules and shows the rule that blocks it', async () => {
+    vi.spyOn(api, 'post').mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          matched: true,
+          rule: {
+            position: 2,
+            id: 'missing_max_tokens',
+            name: 'Missing max_tokens',
+          },
+          field: 'max_tokens',
+          value: '',
+          status: 400,
+          response: {
+            type: 'error',
+            error: { type: 'new_api_error', message: 'max_tokens is required' },
+          },
+          trace: [
+            {
+              position: 1,
+              id: 'openai_fields',
+              name: 'OpenAI-only parameters',
+              result: 'conditions',
+            },
+            {
+              position: 2,
+              id: 'missing_max_tokens',
+              name: 'Missing max_tokens',
+              result: 'matched',
+            },
+          ],
+        },
+      },
+    })
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Test request' })
+    )
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Run check' })
+    )
+    expect(
+      await within(dialog).findByText('Rule 2: Missing max_tokens')
+    ).toBeVisible()
+    expect(
+      within(dialog).getByText('The client receives HTTP 400')
+    ).toBeVisible()
+    expect(api.post).toHaveBeenCalledOnce()
+    const [url, request] = vi.mocked(api.post).mock.calls[0]
+    expect(url).toBe('/api/option/request_policy/rules/test')
+    expect(request).toMatchObject({
+      endpoint: 'claude_messages',
+      model: 'claude-sonnet-4-6',
+      pass_through: true,
+    })
+    expect(JSON.parse((request as { rules: string }).rules)).toEqual(
+      RULE_PRESETS
     )
   })
 

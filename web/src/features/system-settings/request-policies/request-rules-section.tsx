@@ -16,145 +16,123 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useRef } from 'react'
-import { useForm } from 'react-hook-form'
+import { useQuery } from '@tanstack/react-query'
+import { Braces, FlaskConical, ListFilter, Plus } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { Form, FormField } from '@/components/ui/form'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { JsonCodeEditor } from '@/components/json-code-editor'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import {
-  SettingsControlGroup,
-  SettingsForm,
-  SettingsSwitchField,
-} from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useResetForm } from '../hooks/use-reset-form'
+import { getPolicyConfig } from './api'
 import type { RequestRuleSettings } from './defaults'
+import { RuleEditorDialog } from './request-rules/rule-editor-dialog'
+import {
+  compactRulesJson,
+  createBlankRule,
+  createRuleId,
+  formatRulesJson,
+  parseRulesJson,
+  ruleDisplayName,
+  ruleTemplates,
+} from './request-rules/rules'
+import { RulesTable } from './request-rules/rules-table'
+import { TestRequestDialog } from './request-rules/test-request-dialog'
+import type { RequestRule } from './request-rules/types'
 import { useSavePolicy } from './use-save-policy'
 
-// Option keys contain dots, so the form nests them the way react-hook-form
-// reads dotted field names.
-type RequestRuleFormValues = {
-  request_rule_setting: {
-    openai_content_blocks: boolean
-    openai_tools: boolean
-    openai_tool_role: boolean
-    openai_fields: boolean
-    missing_max_tokens: boolean
-  }
-}
-
-type RequestRuleOptionValues = Record<keyof RequestRuleSettings, string>
+const OPTION_KEY = 'request_rule_setting.rules'
 
 type RequestRulesSectionProps = {
   defaultValues: RequestRuleSettings
 }
 
-function toFormValues(settings: RequestRuleSettings): RequestRuleFormValues {
-  return {
-    request_rule_setting: {
-      openai_content_blocks:
-        settings['request_rule_setting.openai_content_blocks'],
-      openai_tools: settings['request_rule_setting.openai_tools'],
-      openai_tool_role: settings['request_rule_setting.openai_tool_role'],
-      openai_fields: settings['request_rule_setting.openai_fields'],
-      missing_max_tokens: settings['request_rule_setting.missing_max_tokens'],
-    },
-  }
-}
+type EditingRule = { index: number | null; rule: RequestRule }
 
-function toOptionValues(
-  values: RequestRuleFormValues
-): RequestRuleOptionValues {
-  const rules = values.request_rule_setting
-  return {
-    'request_rule_setting.openai_content_blocks': String(
-      rules.openai_content_blocks
-    ),
-    'request_rule_setting.openai_tools': String(rules.openai_tools),
-    'request_rule_setting.openai_tool_role': String(rules.openai_tool_role),
-    'request_rule_setting.openai_fields': String(rules.openai_fields),
-    'request_rule_setting.missing_max_tokens': String(rules.missing_max_tokens),
-  }
+// The JSON tab edits the draft text directly, so keep it readable.
+function formatStoredRules(stored: string): string {
+  const parsed = parseRulesJson(stored)
+  return parsed.ok ? formatRulesJson(parsed.rules) : stored
 }
 
 export function RequestRulesSection(props: RequestRulesSectionProps) {
   const { t } = useTranslation()
   const updateOption = useSavePolicy()
-  const formDefaults = useMemo(
-    () => toFormValues(props.defaultValues),
-    [props.defaultValues]
-  )
-  const baselineRef = useRef(toOptionValues(formDefaults))
-  const form = useForm<RequestRuleFormValues>({ defaultValues: formDefaults })
-
-  useResetForm(form, formDefaults)
-  useEffect(() => {
-    baselineRef.current = toOptionValues(formDefaults)
-  }, [formDefaults])
-
-  const rules = useMemo(
+  const policy = useQuery({
+    queryKey: ['request-policy'],
+    queryFn: getPolicyConfig,
+    staleTime: Infinity,
+  })
+  const presets = useMemo(
     () =>
-      [
-        {
-          name: 'request_rule_setting.openai_content_blocks',
-          label: t('OpenAI image and file blocks'),
-          description: t(
-            'Content blocks of type image_url, input_image, file or input_file, including those inside tool results. Claude expects image and document blocks.'
-          ),
-        },
-        {
-          name: 'request_rule_setting.openai_tools',
-          label: t('OpenAI-style tools'),
-          description: t(
-            'Tools written as type function with a nested function object. Claude expects name, description and input_schema on each tool.'
-          ),
-        },
-        {
-          name: 'request_rule_setting.openai_tool_role',
-          label: t('Messages with role tool'),
-          description: t(
-            'Claude returns tool results as tool_result blocks inside a user message.'
-          ),
-        },
-        {
-          name: 'request_rule_setting.openai_fields',
-          label: t('OpenAI-only parameters'),
-          description: t(
-            'Parameters such as stop, stream_options, n, seed and response_format, and message fields such as name and tool_calls. Checked only when the channel passes the body through, because a rebuilt body drops them.'
-          ),
-        },
-        {
-          name: 'request_rule_setting.missing_max_tokens',
-          label: t('Missing max_tokens'),
-          description: t(
-            'Claude requires max_tokens. Checked only when the channel passes the body through, because a rebuilt body gets a default value.'
-          ),
-        },
-      ] as const,
-    [t]
+      new Map(
+        (policy.data?.request_rule_presets ?? []).map((rule) => [rule.id, rule])
+      ),
+    [policy.data]
   )
+  const stored = props.defaultValues[OPTION_KEY]
+  const [draft, setDraft] = useState(() => formatStoredRules(stored))
+  const baselineRef = useRef(compactRulesJson(stored))
+  const [mode, setMode] = useState<'visual' | 'json'>('visual')
+  const [editing, setEditing] = useState<EditingRule | null>(null)
+  const [deleting, setDeleting] = useState<number | null>(null)
+  const [testOpen, setTestOpen] = useState(false)
+  const parsed = useMemo(() => parseRulesJson(draft), [draft])
+  const rules = parsed.ok ? parsed.rules : []
+  const templates = useMemo(() => ruleTemplates(t), [t])
 
-  const onSubmit = async (values: RequestRuleFormValues) => {
-    const next = toOptionValues(values)
-    const updates = Object.entries(next).filter(
-      ([key, value]) =>
-        value !== baselineRef.current[key as keyof RequestRuleOptionValues]
+  // Refreshed settings replace the draft only while it has no unsaved edits.
+  useEffect(() => {
+    const incoming = compactRulesJson(stored)
+    const previous = baselineRef.current
+    if (incoming === previous) return
+    baselineRef.current = incoming
+    setDraft((current) =>
+      compactRulesJson(current) === previous
+        ? formatStoredRules(stored)
+        : current
     )
-    if (updates.length === 0) {
+  }, [stored])
+
+  const updateRules = (next: RequestRule[]) => setDraft(formatRulesJson(next))
+
+  const save = async () => {
+    if (!parsed.ok) {
+      toast.error(t(parsed.error))
+      return
+    }
+    const next = JSON.stringify(parsed.rules)
+    if (next === baselineRef.current) {
       toast.info(t('No changes to save'))
       return
     }
     try {
-      await updateOption.mutateAsync(Object.fromEntries(updates))
+      await updateOption.mutateAsync({ [OPTION_KEY]: next })
       baselineRef.current = next
     } catch (error) {
       handleServerError(error)
     }
   }
+
+  const deletingRule = deleting === null ? undefined : rules[deleting]
 
   return (
     <SettingsSection title={t('Invalid requests')}>
@@ -162,41 +140,189 @@ export function RequestRulesSection(props: RequestRulesSectionProps) {
         <p>{t('Source: global settings. Changes take effect after saving.')}</p>
         <p>
           {t(
-            'Channels with Block invalid requests turned on check /v1/messages requests against the enabled rules before relaying. A match gets a 400 error that names the rule. It is not sent upstream, retried on another channel or counted against channel health, and usage logs record it with the error code request_rule_blocked.'
-          )}
-        </p>
-        <p>
-          {t(
-            'Each rule matches an OpenAI-format request that Claude upstreams reject. Limits of a specific model, such as an unsupported tool_choice or temperature, are left to the upstream.'
+            'Channels with Block invalid requests turned on check Claude, OpenAI Chat, Responses and Gemini requests against these rules in order before relaying. The first matching rule answers the request with its own error: the request is not sent upstream, retried on another channel or counted against channel health, and its log names the rule.'
           )}
         </p>
       </div>
-      <Form {...form}>
-        <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
-          <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
-            isSaving={form.formState.isSubmitting}
-          />
-          <SettingsControlGroup role='group' aria-label={t('Request rules')}>
-            {rules.map((rule) => (
-              <FormField
-                key={rule.name}
-                control={form.control}
-                name={rule.name}
-                render={({ field }) => (
-                  <SettingsSwitchField
-                    controlId={rule.name}
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                    label={rule.label}
-                    description={rule.description}
-                  />
-                )}
+      <SettingsPageFormActions
+        onSave={() => void save()}
+        isSaving={updateOption.isPending}
+      />
+      <div className='bg-card min-w-0 overflow-hidden rounded-xl border'>
+        <div className='flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5'>
+          <h3 className='text-base font-semibold'>{t('Request rules')}</h3>
+          <Badge variant='secondary' className='tabular-nums'>
+            {rules.length}
+          </Badge>
+        </div>
+        <Tabs
+          value={mode}
+          onValueChange={(value) => {
+            if (value === 'json') {
+              setMode('json')
+              return
+            }
+            if (!parsed.ok) {
+              toast.error(t(parsed.error))
+              return
+            }
+            setMode('visual')
+          }}
+          className='gap-0'
+        >
+          <div className='flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5'>
+            <TabsList aria-label={t('Rule editor mode')}>
+              <TabsTrigger value='visual' className='px-3'>
+                <ListFilter aria-hidden='true' />
+                {t('Visual')}
+              </TabsTrigger>
+              <TabsTrigger value='json' className='px-3'>
+                <Braces aria-hidden='true' />
+                JSON
+              </TabsTrigger>
+            </TabsList>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Button
+                variant='outline'
+                disabled={!parsed.ok}
+                onClick={() => setTestOpen(true)}
+              >
+                <FlaskConical aria-hidden='true' data-icon='inline-start' />
+                {t('Test request')}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={<Button disabled={mode === 'json' || !parsed.ok} />}
+                >
+                  <Plus aria-hidden='true' data-icon='inline-start' />
+                  {t('Add Rule')}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end' className='w-80'>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem
+                      onClick={() =>
+                        setEditing({
+                          index: null,
+                          rule: createBlankRule(rules),
+                        })
+                      }
+                    >
+                      {t('Blank Rule')}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>
+                      {t('From recent upstream 400 errors')}
+                    </DropdownMenuLabel>
+                    {templates.map((template) => (
+                      <DropdownMenuItem
+                        key={template.key}
+                        onClick={() =>
+                          setEditing({
+                            index: null,
+                            rule: { ...template.rule, id: createRuleId(rules) },
+                          })
+                        }
+                      >
+                        {template.rule.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+          <Separator />
+          <TabsContent value='visual' className='min-w-0'>
+            <RulesTable
+              rules={rules}
+              presets={presets}
+              onToggle={(index, enabled) =>
+                updateRules(
+                  rules.map((rule, i) =>
+                    i === index ? { ...rule, enabled } : rule
+                  )
+                )
+              }
+              onEdit={(index) => setEditing({ index, rule: rules[index] })}
+              onMove={(index, offset) => {
+                const next = [...rules]
+                const [moved] = next.splice(index, 1)
+                next.splice(index + offset, 0, moved)
+                updateRules(next)
+              }}
+              onReset={(index) => {
+                const preset = presets.get(rules[index].id)
+                if (!preset) return
+                updateRules(
+                  rules.map((rule, i) => (i === index ? { ...preset } : rule))
+                )
+              }}
+              onDelete={setDeleting}
+            />
+          </TabsContent>
+          <TabsContent value='json' className='min-w-0'>
+            <div className='grid gap-2 p-4 sm:p-5'>
+              <Label htmlFor='request-rules-json'>{t('Rules JSON')}</Label>
+              <p className='text-muted-foreground text-xs'>
+                {t('Switch to visual mode to add rules or apply templates.')}
+              </p>
+              <JsonCodeEditor
+                id='request-rules-json'
+                value={draft}
+                onChange={setDraft}
+                aria-invalid={!parsed.ok}
+                heightClassName='h-[420px] min-h-[420px] max-h-[420px]'
               />
-            ))}
-          </SettingsControlGroup>
-        </SettingsForm>
-      </Form>
+              {parsed.ok ? null : (
+                <p className='text-destructive text-xs'>{t(parsed.error)}</p>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <RuleEditorDialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null)
+        }}
+        rule={editing?.rule ?? null}
+        isNew={editing?.index === null}
+        onSave={(rule) => {
+          const index = editing?.index ?? null
+          updateRules(
+            index === null
+              ? [...rules, rule]
+              : rules.map((item, i) => (i === index ? rule : item))
+          )
+          setEditing(null)
+        }}
+      />
+      <TestRequestDialog
+        open={testOpen}
+        onOpenChange={setTestOpen}
+        rules={rules}
+        presets={presets}
+      />
+      <ConfirmDialog
+        open={deletingRule !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null)
+        }}
+        title={t('Delete Rule')}
+        desc={t('Delete {{name}}? The change takes effect after saving.', {
+          name: deletingRule ? ruleDisplayName(t, deletingRule, presets) : '',
+        })}
+        destructive
+        handleConfirm={() => {
+          if (deleting !== null) {
+            updateRules(rules.filter((_, i) => i !== deleting))
+          }
+          setDeleting(null)
+        }}
+      />
     </SettingsSection>
   )
 }

@@ -46,12 +46,9 @@ export type UpstreamErrorSettings = {
   'upstream_error_setting.mask_status_codes': string
   'upstream_error_setting.mask_keywords': string
 }
+// A JSON array of request rules; the backend default holds the preset rules.
 export type RequestRuleSettings = {
-  'request_rule_setting.openai_content_blocks': boolean
-  'request_rule_setting.openai_tools': boolean
-  'request_rule_setting.openai_tool_role': boolean
-  'request_rule_setting.openai_fields': boolean
-  'request_rule_setting.missing_max_tokens': boolean
+  'request_rule_setting.rules': string
 }
 export type RequestPolicySettings = RetrySettings &
   HealthSettings &
@@ -86,9 +83,5 @@ export const defaultRequestPolicySettings: RequestPolicySettings = {
   'upstream_error_setting.mask_enabled': true,
   'upstream_error_setting.mask_status_codes': '401-403',
   'upstream_error_setting.mask_keywords': '',
-  'request_rule_setting.openai_content_blocks': true,
-  'request_rule_setting.openai_tools': true,
-  'request_rule_setting.openai_tool_role': true,
-  'request_rule_setting.openai_fields': true,
-  'request_rule_setting.missing_max_tokens': true,
+  'request_rule_setting.rules': '',
 }

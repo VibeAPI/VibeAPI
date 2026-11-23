@@ -825,4 +825,19 @@ export const STATIC_I18N_KEYS = [
   'Vendor name and icon must not exceed 128 characters.',
   'Shown',
   'Not shown',
+  // Request rule presets: names and descriptions come from the backend
+  // (pkg/requestrule) and are shown translated until an admin edits them.
+  'OpenAI image and file blocks',
+  'Content blocks of type image_url, input_image, file or input_file, including those inside tool results. Claude expects image and document blocks.',
+  'OpenAI-style tools',
+  'Tools written as type function with a nested function object. Claude expects name, description and input_schema on each tool.',
+  'Messages with role tool',
+  'Claude returns tool results as tool_result blocks inside a user message.',
+  'OpenAI-only parameters',
+  'Parameters such as stop, stream_options, n, seed and response_format, and message fields such as name and tool_calls. Checked only when the channel passes the body through, because a rebuilt body drops them.',
+  'Missing max_tokens',
+  'Claude requires max_tokens. Checked only when the channel passes the body through, because a rebuilt body gets a default value.',
+  // Request rules JSON parse errors (request-rules/rules.ts)
+  'Rules JSON is not valid JSON',
+  'Rules JSON must be an array of rules',
 ] as const
