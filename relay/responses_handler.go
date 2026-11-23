@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/pkg/requestrule"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -51,6 +52,11 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return apiErr
 	}
 	defer closer.Close()
+	if info.RelayMode == relayconstant.RelayModeResponses {
+		if apiErr := checkRequestRules(c, info, requestrule.EndpointOpenAIResponses); apiErr != nil {
+			return apiErr
+		}
+	}
 
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)

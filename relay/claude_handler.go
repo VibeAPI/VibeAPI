@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/requestrule"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -29,13 +30,8 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		return types.NewErrorWithStatusCode(fmt.Errorf("invalid request type, expected *dto.ClaudeRequest, got %T", info.Request), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
-	// A rule match is the caller's error: answer it locally without relaying,
-	// retrying on another channel, or counting it against channel health.
-	if info.ChannelSetting.RequestRulesEnabled {
-		passThrough := model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled
-		if err := helper.CheckClaudeRequestRules(c, claudeReq, passThrough); err != nil {
-			return types.NewErrorWithStatusCode(err, types.ErrorCodeRequestRuleBlocked, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-		}
+	if apiErr := checkRequestRules(c, info, requestrule.EndpointClaudeMessages); apiErr != nil {
+		return apiErr
 	}
 
 	request, err := common.DeepCopy(claudeReq)

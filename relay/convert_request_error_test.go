@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -239,9 +240,54 @@ func TestClaudeRequestRulesRejectBeforeUpstream(t *testing.T) {
 			assert.Empty(t, received, "a rule match must not reach the upstream")
 			assert.Equal(t, types.ErrorCodeRequestRuleBlocked, apiErr.GetErrorCode())
 			assert.True(t, types.IsSkipRetryError(apiErr))
-			assert.Contains(t, apiErr.Error(), `request rule openai_fields: "stop" is an OpenAI Chat Completions parameter`)
+			assert.Contains(t, apiErr.Error(), `request rule openai_fields: "stop" is an OpenAI-only field`)
 		})
 	}
+}
+
+// Request rules also cover /v1/chat/completions. A custom rule answers with
+// its own status, error code and message, and the message keeps field paths
+// such as reasoning.effort instead of masking them like domain names.
+func TestRequestRulesBlockOpenAIChatBeforeUpstream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service.InitHttpClient()
+	setting := operation_setting.GetRequestRuleSetting()
+	savedRules := setting.Rules
+	t.Cleanup(func() { setting.Rules = savedRules })
+	setting.Rules = `[{"id":"effort_none","name":"effort none","enabled":true,"endpoints":["openai_chat"],"model_regex":"^gpt-6","match":"any",
+		"conditions":[{"source":"json","path":"reasoning.effort","op":"regex","value":"^none$"},{"source":"json","path":"reasoning_effort","op":"regex","value":"^none$"}],
+		"response":{"status":422,"code":"effort_none","message":"{{model}} does not support reasoning.effort none ({{field}})"}}]`
+
+	received := make(chan []byte, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err == nil {
+			received <- payload
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, `{"error":{"message":"Unsupported value: 'none'","type":"invalid_request_error"}}`)
+	}))
+	t.Cleanup(upstream.Close)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-6-astra","reasoning_effort":"none","messages":[{"role":"user","content":"hi"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	common.SetContextKey(c, constant.ContextKeyChannelType, constant.ChannelTypeOpenAI)
+	common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, "gpt-6-astra")
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{RequestRulesEnabled: true})
+	request, err := helper.GetAndValidateTextRequest(c, relayconstant.RelayModeChatCompletions)
+	require.NoError(t, err)
+	info := relaycommon.GenRelayInfoOpenAI(c, request)
+
+	apiErr := TextHelper(c, info)
+	require.NotNil(t, apiErr)
+	assert.Empty(t, received, "a rule match must not reach the upstream")
+	assert.Equal(t, http.StatusUnprocessableEntity, apiErr.StatusCode)
+	assert.Equal(t, types.ErrorCode("effort_none"), apiErr.GetErrorCode())
+	assert.True(t, types.IsSkipRetryError(apiErr))
+	assert.True(t, info.PerformanceBusinessRejection, "a rule match is not a channel failure")
+	assert.Equal(t, "gpt-6-astra does not support reasoning.effort none (reasoning_effort)", apiErr.ToOpenAIError().Message)
 }
 
 func hasHostDiagnosticCode(diagnostics []types.ConversionDiagnostic, code string) bool {

@@ -80,4 +80,8 @@ const (
 	ContextKeyTokenAuditParams ContextKey = "token_audit_params"
 	// ContextKeyTokenAuditSucceeded disambiguates token responses that exceed the audit buffer.
 	ContextKeyTokenAuditSucceeded ContextKey = "token_audit_succeeded"
+
+	// ContextKeyRequestRuleMatch holds the *requestrule.Match of a request that
+	// a request rule answered, for its error log and request policy decision.
+	ContextKeyRequestRuleMatch ContextKey = "request_rule_match"
 )

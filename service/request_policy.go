@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/requestrule"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -114,6 +115,10 @@ func RecordPolicyFailure(c *gin.Context, channelID int, err *types.NewAPIError, 
 	event := PolicyEvent{ChannelID: channelID, Status: err.StatusCode, ErrorCode: string(err.GetErrorCode()), ErrorSource: source, Decision: PolicyDecision{Action: "failure", Reason: "upstream_failure", Source: source}}
 	if source == "local" {
 		event.Decision.Reason = "local_rejection"
+		if match, ok := common.GetContextKeyType[*requestrule.Match](c, constant.ContextKeyRequestRuleMatch); ok {
+			event.Decision = PolicyDecision{Action: "failure", Reason: "request_rule_blocked", Source: "request_rule"}
+			event.Rule = match.Rule.Name
+		}
 	}
 	state.AddEvent(event)
 	event.Decision, event.Health = decision, "unchanged"

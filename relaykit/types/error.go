@@ -96,6 +96,7 @@ type NewAPIError struct {
 	skipRetry      bool
 	recordErrorLog *bool
 	fromUpstream   bool
+	plainMessage   bool
 	errorType      ErrorType
 	errorCode      ErrorCode
 	StatusCode     int
@@ -149,6 +150,13 @@ func (e *NewAPIError) ErrorWithStatusCode() string {
 	return fmt.Sprintf("status_code=%d, %s", e.StatusCode, msg)
 }
 
+// keepsPlainMessage reports whether the message reaches responses and logs as
+// written instead of masked: count-token failures and errors created with
+// ErrOptionWithPlainMessage.
+func (e *NewAPIError) keepsPlainMessage() bool {
+	return e.errorCode == ErrorCodeCountTokenFailed || e.plainMessage
+}
+
 func (e *NewAPIError) MaskSensitiveError() string {
 	if e == nil {
 		return ""
@@ -157,7 +165,7 @@ func (e *NewAPIError) MaskSensitiveError() string {
 		return string(e.errorCode)
 	}
 	errStr := e.Err.Error()
-	if e.errorCode == ErrorCodeCountTokenFailed {
+	if e.keepsPlainMessage() {
 		return errStr
 	}
 	return kitutil.MaskSensitiveInfo(errStr)
@@ -205,7 +213,7 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 			Code:    e.errorCode,
 		}
 	}
-	if e.errorCode != ErrorCodeCountTokenFailed {
+	if !e.keepsPlainMessage() {
 		result.Message = kitutil.MaskSensitiveInfo(result.Message)
 	}
 	if result.Message == "" {
@@ -234,7 +242,7 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 			Type:    string(e.errorType),
 		}
 	}
-	if e.errorCode != ErrorCodeCountTokenFailed {
+	if !e.keepsPlainMessage() {
 		result.Message = kitutil.MaskSensitiveInfo(result.Message)
 	}
 	if result.Message == "" {
@@ -406,6 +414,15 @@ func ErrOptionWithHideErrMsg(replaceStr string) NewAPIErrorOptions {
 			fmt.Printf("ErrOptionWithHideErrMsg: %s, origin error: %s", replaceStr, e.Err)
 		}
 		e.Err = errors.New(replaceStr)
+	}
+}
+
+// ErrOptionWithPlainMessage keeps the message unmasked in responses and logs.
+// Use it only for messages the gateway or its administrator wrote, such as a
+// request rule's error, where masking would garble paths like reasoning.effort.
+func ErrOptionWithPlainMessage() NewAPIErrorOptions {
+	return func(e *NewAPIError) {
+		e.plainMessage = true
 	}
 }
 

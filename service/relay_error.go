@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/requestrule"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -122,6 +123,15 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other.SetPublic("error_code", visibleErr.GetErrorCode())
 		other.SetPublic("status_code", visibleErr.StatusCode)
 		AppendRelayLogAdminInfo(c, relayInfo, other)
+		if match, ok := common.GetContextKeyType[*requestrule.Match](c, constant.ContextKeyRequestRuleMatch); ok {
+			other.SetAdmin("request_rule", map[string]any{
+				"position": match.Index + 1,
+				"id":       match.Rule.ID,
+				"name":     match.Rule.Name,
+				"field":    match.Field,
+				"value":    match.Value,
+			})
+		}
 		AppendResponseModelLogInfo(relayInfo, other)
 		AppendTaskPluginContextAuditInfo(c, other)
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)

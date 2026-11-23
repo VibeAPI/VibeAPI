@@ -87,8 +87,9 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 				"upstream_error_setting.mask_keywords":     "upstream maintenance",
 			}))
 			assert.Equal(t, operation_setting.UpstreamErrorSetting{MaskEnabled: false, MaskStatusCodes: "401,403", MaskKeywords: "upstream maintenance"}, *operation_setting.GetUpstreamErrorSetting(), "the runtime upstream error setting follows the same write")
-			require.NoError(t, UpdateRequestPolicyOptions(map[string]string{"request_rule_setting.openai_fields": "false"}))
-			assert.Equal(t, operation_setting.RequestRuleSetting{OpenAIContentBlocks: true, OpenAITools: true, OpenAIToolRole: true, OpenAIFields: false, MissingMaxTokens: true}, *operation_setting.GetRequestRuleSetting(), "the runtime request rule setting follows the same write")
+			requestRules := `[{"id":"prefill","name":"Prefill","enabled":true,"endpoints":["claude_messages"],"conditions":[{"source":"json","path":"messages.-1.role","op":"regex","value":"^assistant$"}],"response":{"status":400,"code":"request_rule_blocked","message":"no prefill"}}]`
+			require.NoError(t, UpdateRequestPolicyOptions(map[string]string{"request_rule_setting.rules": requestRules}))
+			assert.Equal(t, requestRules, operation_setting.GetRequestRuleSetting().Rules, "the runtime request rules follow the same write")
 			assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"request_policy_setting.mode": "off"}), "the removed mode switch is not a policy option")
 			assert.False(t, CurrentRequestPolicy().Affinity.Rules[0].SkipRetryOnFailure)
 			assert.Equal(t, rules, CurrentRequestPolicy().Options["channel_affinity_setting.rules"])
@@ -107,7 +108,7 @@ func TestRequestPolicyDatabaseMatrix(t *testing.T) {
 				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{"RetryTimes": value}))
 				assert.Same(t, snapshot, CurrentRequestPolicy())
 			}
-			for key, value := range map[string]string{"upstream_error_setting.mask_status_codes": "403-401", "upstream_error_setting.mask_enabled": "maybe", "request_rule_setting.openai_tools": "maybe"} {
+			for key, value := range map[string]string{"upstream_error_setting.mask_status_codes": "403-401", "upstream_error_setting.mask_enabled": "maybe", "request_rule_setting.rules": `[{"id":"bad","name":"bad","enabled":true,"endpoints":["claude_messages"],"conditions":[{"source":"json","path":"model","op":"regex","value":"("}],"response":{"status":400,"code":"x","message":"m"}}]`} {
 				assert.Error(t, UpdateRequestPolicyOptions(map[string]string{key: value}), key)
 				assert.Same(t, snapshot, CurrentRequestPolicy())
 			}
