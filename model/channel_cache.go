@@ -217,15 +217,16 @@ func GetRandomSatisfiedChannel(
 }
 
 // GetRandomUnprotectedChannel selects a prompt-audit fallback from the memory
-// cache while preserving the shared channel-constraint predicate.
-func GetRandomUnprotectedChannel(group string, modelName string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
+// cache. filters are the request's channel filters, so the fallback passes the
+// same checks, user blacklist and user rules included, as any other channel
+// the request could use.
+func GetRandomUnprotectedChannel(group string, modelName string, filters []dto.ChannelFilter, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
 	if !common.MemoryCacheEnabled {
-		return GetUnprotectedChannel(group, modelName, requestPath, userId, maxPriority, protected)
+		return GetUnprotectedChannel(group, modelName, filters, maxPriority, protected)
 	}
 	channelSyncLock.RLock()
 	defer channelSyncLock.RUnlock()
 
-	filters := []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: requestPath}}
 	candidateIDs, _ := filterCandidateIDs(group2model2channels[group][modelName], modelName, filters)
 	if len(candidateIDs) == 0 {
 		normalizedModel := ratio_setting.FormatMatchingModelName(modelName)
@@ -234,7 +235,7 @@ func GetRandomUnprotectedChannel(group string, modelName string, requestPath str
 	targets := make([]*Channel, 0, len(candidateIDs))
 	for _, channelID := range candidateIDs {
 		channel := channelsIDM[channelID]
-		if channel == nil || channel.GetOtherSettings().IsUserBlacklisted(userId) || !IsPromptAuditFallbackChannel(channel, maxPriority, protected) {
+		if channel == nil || !IsPromptAuditFallbackChannel(channel, maxPriority, protected) {
 			continue
 		}
 		targets = append(targets, channel)

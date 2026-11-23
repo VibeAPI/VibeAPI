@@ -43,12 +43,38 @@ const (
 )
 
 type ChannelFilter struct {
-	Kind                   ChannelFilterKind
-	RequestPath            string
-	UserId                 int
+	Kind        ChannelFilterKind
+	RequestPath string
+	UserId      int
+	// NonStream marks a user_blacklist filter for a request that did not ask
+	// for streaming, which channel user rules can match.
+	NonStream bool
+	// RuleLimit, when set on a user_blacklist filter, collects the channels a
+	// user rule's RPM kept the request off.
+	RuleLimit              *UserRuleLimit
 	TaskPluginKey          string
 	TaskPluginKeys         []string
 	TaskPluginChannelTypes []int
+}
+
+// UserRuleLimit records, for one request, that a channel user rule's RPM kept
+// the request off at least one channel. When no channel is left, the request
+// can be answered with 429 and retried after RetryAfterSeconds, the time left
+// in the earliest of those windows.
+type UserRuleLimit struct {
+	Limited           bool
+	RetryAfterSeconds int
+}
+
+func (l *UserRuleLimit) Record(retryAfterSeconds int) {
+	if l == nil {
+		return
+	}
+	retryAfterSeconds = max(retryAfterSeconds, 1)
+	if !l.Limited || retryAfterSeconds < l.RetryAfterSeconds {
+		l.RetryAfterSeconds = retryAfterSeconds
+	}
+	l.Limited = true
 }
 
 type ChannelConstraints struct {
@@ -68,6 +94,20 @@ func (cc *ChannelConstraints) AddFilter(f ChannelFilter) {
 		return
 	}
 	cc.Filters = append(cc.Filters, f)
+}
+
+// UserRuleLimit returns the rule limit report of the request's user_blacklist
+// filter, or nil when the request has none.
+func (cc *ChannelConstraints) UserRuleLimit() *UserRuleLimit {
+	if cc == nil {
+		return nil
+	}
+	for _, filter := range cc.Filters {
+		if filter.Kind == FilterUserBlacklist && filter.RuleLimit != nil {
+			return filter.RuleLimit
+		}
+	}
+	return nil
 }
 
 // ResolvedPin returns the winning pin after priority resolution.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,10 +15,14 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestChannelMatchesExpectedTaskPluginUsesGenericChannelSetting(t *testing.T) {
@@ -340,4 +345,136 @@ func TestSharedEndpointRebindsToBoundNewAPIExtension(t *testing.T) {
 	require.Nil(t, SetupContextForSelectedChannel(c, channel, "task-model"))
 	assert.Equal(t, "alpha", c.GetString("task_plugin_key"), "the first bound candidate executes regardless of the earlier pin")
 	assert.Equal(t, "alpha", c.MustGet(jsplugin.ContextKeyPinnedEndpoint).(jsplugin.PinnedEndpoint).Plugin.Meta.Key)
+}
+
+func TestDistributeAppliesChannelUserRules(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	// Every connection to :memory: is a separate empty database.
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+	previousDB, previousCacheEnabled, previousRedisEnabled := model.DB, common.MemoryCacheEnabled, common.RedisEnabled
+	model.DB, common.MemoryCacheEnabled, common.RedisEnabled = db, true, false
+	t.Cleanup(func() {
+		require.NoError(t, db.Exec("DELETE FROM abilities").Error)
+		require.NoError(t, db.Exec("DELETE FROM channels").Error)
+		model.InitChannelCache()
+		model.DB, common.MemoryCacheEnabled, common.RedisEnabled = previousDB, previousCacheEnabled, previousRedisEnabled
+	})
+
+	// The in-memory RPM counters outlive a test run, so the limited user is new
+	// on every run.
+	limitedUser := 7400000 + int(modelRateLimitTestUsers.Add(1))
+	// Only channel 941 serves rule-solo, so a request it rejects has nowhere
+	// else to go.
+	for _, candidate := range []struct {
+		id       int
+		priority int64
+		models   string
+		rules    []dto.ChannelUserRule
+	}{
+		{941, 10, "rule-test,rule-mini,rule-solo", []dto.ChannelUserRule{
+			{UserId: 42, Models: []string{"rule-mini", "rule-solo"}, NonStreamOnly: true},
+			{UserId: limitedUser, RPM: 1},
+			{UserId: limitedUser, Models: []string{"rule-solo"}, NonStreamOnly: true},
+		}},
+		{942, 5, "rule-test,rule-mini", nil},
+	} {
+		priority := candidate.priority
+		channel := &model.Channel{
+			Id: candidate.id, Type: constant.ChannelTypeOpenAI, Key: "sk-test", Status: common.ChannelStatusEnabled,
+			Name: fmt.Sprintf("rules-%d", candidate.id), Models: candidate.models, Group: "default", Priority: &priority,
+		}
+		channel.SetOtherSettings(dto.ChannelOtherSettings{UserRules: candidate.rules})
+		require.NoError(t, db.Create(channel).Error)
+		require.NoError(t, channel.AddAbilities(nil))
+	}
+	model.InitChannelCache()
+	// Session affinity would keep a user on the channel of their last request.
+	affinity := operation_setting.GetChannelAffinitySetting()
+	previousAffinity := *affinity
+	affinity.Enabled = false
+	t.Cleanup(func() { *affinity = previousAffinity })
+
+	router := gin.New()
+	router.POST("/*path", func(c *gin.Context) {
+		userID, _ := strconv.Atoi(c.GetHeader("X-Test-User"))
+		common.SetContextKey(c, constant.ContextKeyUserId, userID)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+	}, Distribute(), func(c *gin.Context) {
+		c.String(http.StatusOK, strconv.Itoa(common.GetContextKeyInt(c, constant.ContextKeyChannelId)))
+	})
+	send := func(userID int, path string, body string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Test-User", strconv.Itoa(userID))
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder
+	}
+	selectedChannel := func(userID int, path string, body string) string {
+		recorder := send(userID, path, body)
+		require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		return recorder.Body.String()
+	}
+
+	assert.Equal(t, "942", selectedChannel(42, "/v1/chat/completions", `{"model":"rule-mini"}`), "a non-streaming request for a listed model skips the channel")
+	assert.Equal(t, "941", selectedChannel(42, "/v1/chat/completions", `{"model":"rule-mini","stream":true}`), "streaming requests do not match")
+	assert.Equal(t, "941", selectedChannel(42, "/v1/chat/completions", `{"model":"rule-test"}`), "other models do not match")
+	assert.Equal(t, "942", selectedChannel(42, "/v1beta/models/rule-mini:generateContent", `{}`))
+	assert.Equal(t, "941", selectedChannel(42, "/v1beta/models/rule-mini:streamGenerateContent", `{}`))
+	assert.Equal(t, "941", selectedChannel(7, "/v1/chat/completions", `{"model":"rule-mini"}`), "other users do not match")
+
+	blocked := send(42, "/v1/chat/completions", `{"model":"rule-solo"}`)
+	assert.Equal(t, http.StatusServiceUnavailable, blocked.Code, "a blocked request with no other channel gets 503")
+	assert.Empty(t, blocked.Header().Get("Retry-After"))
+
+	assert.Equal(t, "941", selectedChannel(limitedUser, "/v1/chat/completions", `{"model":"rule-test","stream":true}`), "the first request is within the limit")
+	assert.Equal(t, "942", selectedChannel(limitedUser, "/v1/messages", `{"model":"rule-test"}`), "requests beyond the limit move to the next priority")
+	limited := send(limitedUser, "/v1/chat/completions", `{"model":"rule-solo","stream":true}`)
+	require.Equal(t, http.StatusTooManyRequests, limited.Code, "requests beyond the limit with no other channel get 429")
+	retryAfter, err := strconv.Atoi(limited.Header().Get("Retry-After"))
+	require.NoError(t, err)
+	assert.True(t, retryAfter >= 1 && retryAfter <= 60, "Retry-After %d is the time left in the minute", retryAfter)
+	assert.Contains(t, limited.Body.String(), `"code":"rate_limit_exceeded"`)
+	assert.Equal(t, http.StatusServiceUnavailable, send(limitedUser, "/v1/chat/completions", `{"model":"rule-solo"}`).Code,
+		"a request that a rule also blocks outright gets 503, since waiting cannot free the channel")
+
+	form := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader("model=rule-test&stream=yes"))
+	form.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	form.Header.Set("X-Test-User", "7")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, form)
+	assert.Equal(t, http.StatusOK, recorder.Code, "a form body's stream field is not read, so it cannot fail the request: %s", recorder.Body.String())
+
+	// A strict session bound to a channel that only the RPM keeps the user off
+	// waits for that channel: it gets 429 and keeps its binding.
+	snapshot, err := model.BuildRequestPolicy(map[string]string{
+		"channel_affinity_setting.enabled": "true",
+		"channel_affinity_setting.rules":   `[{"name":"session","model_regex":[".*"],"key_sources":[{"type":"request_header","key":"X-Session"}],"session_mode":"strict"}]`,
+	})
+	require.NoError(t, err)
+	*affinity = snapshot.Affinity
+	seed, _ := gin.CreateTestContext(httptest.NewRecorder())
+	seed.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	seed.Request.Header.Set("X-Session", t.Name())
+	_, found := service.GetPreferredChannelByAffinity(seed, "rule-test", "default")
+	require.False(t, found)
+	service.RecordChannelAffinity(seed, 941)
+	t.Cleanup(func() { service.ClearCurrentChannelAffinityCache(seed) })
+
+	session := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"rule-test"}`))
+	session.Header.Set("Content-Type", "application/json")
+	session.Header.Set("X-Test-User", strconv.Itoa(limitedUser))
+	session.Header.Set("X-Session", t.Name())
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, session)
+	assert.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
+	assert.NotEmpty(t, recorder.Header().Get("Retry-After"))
+	bound, found := service.GetPreferredChannelByAffinity(seed, "rule-test", "default")
+	assert.True(t, found, "the session keeps its binding")
+	assert.Equal(t, 941, bound)
 }

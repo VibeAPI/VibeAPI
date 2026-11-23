@@ -7,16 +7,18 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 )
 
+// The user blacklist goes last: its user rules may read RPM counters, and a
+// channel is reported as rate limited only when every other filter accepts it.
 var filterEvalOrder = []dto.ChannelFilterKind{
 	dto.FilterRequestPath,
-	dto.FilterUserBlacklist,
 	dto.FilterTaskPluginIdentity,
 	dto.FilterResponsesWebSocket,
+	dto.FilterUserBlacklist,
 }
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
-// On false, it returns the kind of the first violated filter (request_path
-// then task_plugin_identity) for error attribution.
+// On false, it returns the kind of the first violated filter, in
+// filterEvalOrder, for error attribution.
 func ChannelSatisfiesFilters(ch *Channel, modelName string, filters []dto.ChannelFilter) (bool, dto.ChannelFilterKind) {
 	if ch == nil {
 		return false, ""
@@ -126,7 +128,7 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 			return false
 		}
 	case dto.FilterUserBlacklist:
-		return filter.UserId <= 0 || !ch.GetOtherSettings().IsUserBlacklisted(filter.UserId)
+		return channelAllowsUserRequest(ch, modelName, filter)
 	default:
 		return true
 	}

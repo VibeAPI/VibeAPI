@@ -272,6 +272,24 @@ type ChannelSelectError struct {
 	// NoAvailableChannel marks the "no channel for this group and model"
 	// outcome so the distributor can name the claiming task plugin.
 	NoAvailableChannel bool
+	// RetryAfter is the Retry-After value in seconds for a 429.
+	RetryAfter int
+}
+
+// userRuleRateLimited answers a request that a channel user rule's RPM kept
+// off every channel it could use. Waiting frees such a channel, so the request
+// gets 429 with Retry-After instead of 503. It returns nil when no RPM limit
+// was involved.
+func userRuleRateLimited(constraints *dto.ChannelConstraints) *ChannelSelectError {
+	limit := constraints.UserRuleLimit()
+	if limit == nil || !limit.Limited {
+		return nil
+	}
+	return &ChannelSelectError{
+		StatusCode: http.StatusTooManyRequests, Code: types.ErrorCodeRateLimitExceeded,
+		MessageID: i18n.MsgDistributorUserRuleRateLimited, Params: map[string]any{"Seconds": limit.RetryAfterSeconds},
+		RetryAfter: limit.RetryAfterSeconds,
+	}
 }
 
 // SelectChannelForRequest resolves the channel for one attempt with the rules
@@ -297,6 +315,9 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			return nil, "", pinnedChannelUnavailable(pin, http.StatusForbidden, i18n.MsgDistributorChannelDisabled)
 		}
 		if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+			if limited := userRuleRateLimited(constraints); limited != nil {
+				return nil, "", limited
+			}
 			return nil, "", &ChannelSelectError{
 				StatusCode: http.StatusBadRequest, Code: types.ErrorCode(kind), MessageID: i18n.MsgDistributorNoAvailableChannel,
 				Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},
@@ -312,10 +333,17 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 	if retry.GetRetry() == 0 {
 		if preferredChannelID, found := GetPreferredChannelByAffinity(c, modelName, usingGroup); found {
 			affinityUsable := false
+			// rateLimited marks a preferred channel that only a user rule's
+			// RPM keeps the request off. Waiting frees it, so the session
+			// keeps its binding and a strict session gets 429 instead of 503.
+			rateLimited := false
 			preferred, err := model.CacheGetChannel(preferredChannelID)
 			affinitySatisfied := false
 			if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
+				limit := constraints.UserRuleLimit()
+				limitedBefore := limit != nil && limit.Limited
 				affinitySatisfied, _ = model.ChannelSatisfiesFilters(preferred, modelName, constraints.Filters)
+				rateLimited = !limitedBefore && limit != nil && limit.Limited
 			}
 			if affinitySatisfied {
 				if usingGroup == "auto" {
@@ -337,10 +365,13 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 					MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
 				}
 			}
-			if !affinityUsable && !ShouldKeepChannelAffinityOnChannelDisabled() {
+			if !affinityUsable && !rateLimited && !ShouldKeepChannelAffinityOnChannelDisabled() {
 				ClearCurrentChannelAffinityCache(c)
 			}
 			if !affinityUsable && RequestPolicy(c).SessionMode == "strict" {
+				if rateLimited {
+					return nil, "", userRuleRateLimited(constraints)
+				}
 				return nil, "", &ChannelSelectError{StatusCode: http.StatusServiceUnavailable, Message: "strict_session_binding_unavailable"}
 			}
 		}
@@ -360,6 +391,9 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 			}
 		}
 		if channel == nil {
+			if limited := userRuleRateLimited(constraints); limited != nil {
+				return nil, selectGroup, limited
+			}
 			return nil, selectGroup, &ChannelSelectError{
 				StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeModelNotFound, MessageID: i18n.MsgDistributorNoAvailableChannel,
 				Params: map[string]any{"Group": usingGroup, "Model": modelName}, NoAvailableChannel: true,
@@ -367,6 +401,9 @@ func SelectChannelForRequest(c *gin.Context, modelName string, retry *RetryParam
 		}
 	}
 	if ok, kind := model.ChannelSatisfiesFilters(channel, modelName, constraints.Filters); !ok {
+		if limited := userRuleRateLimited(constraints); limited != nil {
+			return nil, selectGroup, limited
+		}
 		return nil, selectGroup, &ChannelSelectError{
 			StatusCode: http.StatusServiceUnavailable, Code: types.ErrorCodeModelNotFound, MessageID: i18n.MsgDistributorNoAvailableChannel,
 			Params:     map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelName},

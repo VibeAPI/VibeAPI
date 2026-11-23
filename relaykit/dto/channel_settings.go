@@ -105,7 +105,11 @@ const (
 )
 
 type ChannelOtherSettings struct {
-	BlacklistUserIds                      []int                 `json:"blacklist_user_ids,omitempty"`
+	BlacklistUserIds []int `json:"blacklist_user_ids,omitempty"`
+	// UserRules narrow the blacklist to some of a user's requests or cap
+	// them per minute. Users listed in BlacklistUserIds skip the channel for
+	// every request.
+	UserRules                             []ChannelUserRule     `json:"user_rules,omitempty"`
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	OpenRouterEnterprise                  *bool                 `json:"openrouter_enterprise,omitempty"`
@@ -136,6 +140,57 @@ type ChannelOtherSettings struct {
 }
 
 const MaxChannelBlacklistUserIds = 1000
+
+const (
+	MaxChannelUserRules   = 1000
+	MaxChannelUserRuleRPM = 1000000
+)
+
+// ChannelUserRule keeps some of one user's requests off a channel. A request
+// matches when it comes from UserId, asks for one of Models (any model when
+// empty), and does not stream when NonStreamOnly is set. A matching request
+// skips the channel and continues with the next available priority. With RPM
+// set, only the matching requests beyond RPM in the current minute skip it.
+type ChannelUserRule struct {
+	UserId        int      `json:"user_id"`
+	Models        []string `json:"models,omitempty"`
+	NonStreamOnly bool     `json:"non_stream_only,omitempty"`
+	RPM           int      `json:"rpm,omitempty"`
+}
+
+func (r ChannelUserRule) Matches(userId int, modelName string, nonStream bool) bool {
+	if userId <= 0 || r.UserId != userId {
+		return false
+	}
+	if r.NonStreamOnly && !nonStream {
+		return false
+	}
+	return len(r.Models) == 0 || slices.Contains(r.Models, modelName)
+}
+
+func (s *ChannelOtherSettings) ValidateUserRules() error {
+	if s == nil {
+		return nil
+	}
+	if len(s.UserRules) > MaxChannelUserRules {
+		return fmt.Errorf("user_rules cannot contain more than %d rules", MaxChannelUserRules)
+	}
+	for index, rule := range s.UserRules {
+		if rule.UserId <= 0 {
+			return fmt.Errorf("user_rules[%d].user_id must be a positive user ID", index)
+		}
+		if rule.RPM < 0 || rule.RPM > MaxChannelUserRuleRPM {
+			return fmt.Errorf("user_rules[%d].rpm must be between 0 and %d", index, MaxChannelUserRuleRPM)
+		}
+		for _, modelName := range rule.Models {
+			// Matches compares names exactly, so a padded name would never match.
+			if modelName == "" || strings.TrimSpace(modelName) != modelName {
+				return fmt.Errorf("user_rules[%d].models cannot contain empty or space-padded model names", index)
+			}
+		}
+	}
+	return nil
+}
 
 func (s ChannelOtherSettings) IsUserBlacklisted(userId int) bool {
 	if userId <= 0 {

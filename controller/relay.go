@@ -300,7 +300,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		if selectGroup == "" {
 			selectGroup = retryParam.TokenGroup
 		}
-		channel, err := service.SelectPromptAuditFallback(selectGroup, retryParam.ModelName, retryParam.RequestPath, common.GetContextKeyInt(c, constant.ContextKeyUserId), c.GetInt64("prompt_audit_max_priority"), service.PromptAuditProtectedChannels(setting))
+		channel, err := service.SelectPromptAuditFallback(selectGroup, retryParam.ModelName, service.GetChannelConstraints(c).Filters, c.GetInt64("prompt_audit_max_priority"), service.PromptAuditProtectedChannels(setting))
 		if err != nil || channel == nil {
 			if err == nil {
 				err = errors.New("no unprotected channel is available")
@@ -392,7 +392,7 @@ func selectPromptAuditFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo,
 	if selectGroup == "" {
 		selectGroup = relayInfo.TokenGroup
 	}
-	channel, err := service.SelectPromptAuditFallback(selectGroup, relayInfo.OriginModelName, c.Request.URL.Path, relayInfo.UserId, origin.GetPriority(), service.PromptAuditProtectedChannels(setting))
+	channel, err := service.SelectPromptAuditFallback(selectGroup, relayInfo.OriginModelName, service.GetChannelConstraints(c).Filters, origin.GetPriority(), service.PromptAuditProtectedChannels(setting))
 	if err != nil || channel == nil {
 		if err == nil {
 			err = errors.New("no unprotected channel is available")

@@ -175,14 +175,14 @@ func GetChannel(
 }
 
 // GetUnprotectedChannel selects a prompt-audit fallback from the database
-// path while preserving the standard request-path and user-blacklist filters.
-func GetUnprotectedChannel(group string, modelName string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
+// path with the request's channel filters, as GetRandomUnprotectedChannel does.
+func GetUnprotectedChannel(group string, modelName string, filters []dto.ChannelFilter, maxPriority int64, protected map[int]struct{}) (*Channel, error) {
 	var abilities []Ability
 	if err := DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, modelName, true).
 		Order("priority DESC, weight DESC").Find(&abilities).Error; err != nil {
 		return nil, err
 	}
-	abilities = filterAbilitiesByConstraints(abilities, modelName, []dto.ChannelFilter{{Kind: dto.FilterRequestPath, RequestPath: requestPath}})
+	abilities = filterAbilitiesByConstraints(abilities, modelName, filters)
 	filtered := make([]Ability, 0, len(abilities))
 	for _, ability := range abilities {
 		priority := int64(0)
@@ -196,7 +196,7 @@ func GetUnprotectedChannel(group string, modelName string, requestPath string, u
 			continue
 		}
 		channel, err := GetChannelById(ability.ChannelId, true)
-		if err != nil || channel == nil || channel.GetOtherSettings().IsUserBlacklisted(userId) {
+		if err != nil || channel == nil {
 			continue
 		}
 		filtered = append(filtered, ability)

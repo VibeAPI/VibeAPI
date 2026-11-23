@@ -1163,6 +1163,9 @@ func (channel *Channel) ValidateSettings() error {
 	if err := channelOtherSettings.ValidateBlacklistUserIds(); err != nil {
 		return err
 	}
+	if err := channelOtherSettings.ValidateUserRules(); err != nil {
+		return err
+	}
 	if channelOtherSettings.AdvancedCustom != nil {
 		if err := channelOtherSettings.AdvancedCustom.Validate(); err != nil {
 			return err

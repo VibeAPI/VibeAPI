@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -387,12 +388,14 @@ func ValidatePromptAuditEndpoint(rawURL string, allowPrivate bool) error {
 	return validatePromptAuditRuntimeURL(parsed, allowPrivate)
 }
 
-func SelectPromptAuditFallback(group string, modelName string, requestPath string, userId int, maxPriority int64, protected map[int]struct{}) (*model.Channel, error) {
+// SelectPromptAuditFallback picks an unprotected channel for a flagged
+// request. filters are the request's channel filters.
+func SelectPromptAuditFallback(group string, modelName string, filters []taskdto.ChannelFilter, maxPriority int64, protected map[int]struct{}) (*model.Channel, error) {
 	if group == "" || group == "auto" {
 		return nil, errors.New("prompt audit fallback requires the selected concrete group")
 	}
 	if common.MemoryCacheEnabled {
-		return model.GetRandomUnprotectedChannel(group, modelName, requestPath, userId, maxPriority, protected)
+		return model.GetRandomUnprotectedChannel(group, modelName, filters, maxPriority, protected)
 	}
-	return model.GetUnprotectedChannel(group, modelName, requestPath, userId, maxPriority, protected)
+	return model.GetUnprotectedChannel(group, modelName, filters, maxPriority, protected)
 }

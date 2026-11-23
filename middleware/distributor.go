@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,9 @@ import (
 type ModelRequest struct {
 	Model string `json:"model"`
 	Group string `json:"group,omitempty"`
+	// Stream is read from JSON bodies only. Decoding it from other bodies
+	// would reject form fields such as stream=true that are not booleans.
+	Stream bool `json:"-"`
 }
 
 func Distribute() func(c *gin.Context) {
@@ -44,16 +48,21 @@ func Distribute() func(c *gin.Context) {
 			Kind:        taskdto.FilterRequestPath,
 			RequestPath: c.Request.URL.Path,
 		})
-		constraints.AddFilter(taskdto.ChannelFilter{
-			Kind:   taskdto.FilterUserBlacklist,
-			UserId: common.GetContextKeyInt(c, constant.ContextKeyUserId),
-		})
 		service.AppendTaskPluginIdentityFilter(c, c.GetString("expected_task_plugin_key"))
 		modelRequest, shouldSelectChannel, err := getModelRequest(c)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		// A request streams when its body asks for it, when it is a WebSocket,
+		// or when it uses Gemini's streaming action.
+		streaming := modelRequest.Stream || c.IsWebsocket() || (&dto.GeminiChatRequest{}).IsStream(c.Request)
+		constraints.AddFilter(taskdto.ChannelFilter{
+			Kind:      taskdto.FilterUserBlacklist,
+			UserId:    common.GetContextKeyInt(c, constant.ContextKeyUserId),
+			NonStream: !streaming,
+			RuleLimit: &taskdto.UserRuleLimit{},
+		})
 		_, pinned, _ := constraints.ResolvedPin()
 		if !pinned {
 			// Select a channel for the user
@@ -120,6 +129,9 @@ func Distribute() func(c *gin.Context) {
 					message = noAvailableChannelMessage(c, usingGroup, modelRequest.Model)
 				} else if selectErr.MessageID != "" {
 					message = i18n.T(c, selectErr.MessageID, selectErr.Params)
+				}
+				if selectErr.RetryAfter > 0 {
+					c.Header("Retry-After", strconv.Itoa(selectErr.RetryAfter))
 				}
 				abortWithOpenAiMessage(c, selectErr.StatusCode, message, selectErr.Code)
 				return
@@ -271,7 +283,7 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 		return nil, errors.New("model must be provided once")
 	}
 
-	values := gjson.GetManyBytes(requestBody, "model", "group")
+	values := gjson.GetManyBytes(requestBody, "model", "group", "stream")
 	model, err := getJSONStringValue(values[0], "model")
 	if err != nil {
 		return nil, err
@@ -287,8 +299,9 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	c.Request.Body = io.NopCloser(storage)
 
 	return &ModelRequest{
-		Model: model,
-		Group: group,
+		Model:  model,
+		Group:  group,
+		Stream: values[2].Bool(),
 	}, nil
 }
 
@@ -451,6 +464,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
+		modelRequest.Stream = req.Stream
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
@@ -655,6 +669,11 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 		c.Set("api_version", channel.Other)
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
+	}
+	for _, filter := range service.GetChannelConstraints(c).Filters {
+		if filter.Kind == taskdto.FilterUserBlacklist {
+			model.RecordChannelUserRuleHits(channel, modelName, filter.UserId, filter.NonStream)
+		}
 	}
 	return nil
 }
