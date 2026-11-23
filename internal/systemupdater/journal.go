@@ -60,7 +60,7 @@ func (j *Journal) Save(operation contract.Operation) error {
 }
 
 func (j *Journal) Get(operationID string) (contract.Operation, error) {
-	if !contract.ValidIdempotencyKey(operationID) || strings.ContainsAny(operationID, `/\\\x00`) {
+	if !contract.ValidIdempotencyKey(operationID) || strings.ContainsAny(operationID, "/\\\x00") {
 		return contract.Operation{}, os.ErrNotExist
 	}
 	data, err := os.ReadFile(filepath.Join(j.dir, operationID+".json"))

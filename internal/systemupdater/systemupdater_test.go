@@ -331,12 +331,19 @@ func TestStartOperationRejectsChangedDigest(t *testing.T) {
 
 func TestJournalPersistsAndReturnsNewestFirst(t *testing.T) {
 	journal := NewJournal(t.TempDir())
-	require.NoError(t, journal.Save(contract.Operation{ID: "first-op", CreatedAt: time.Now().Add(-time.Minute).Unix()}))
-	require.NoError(t, journal.Save(contract.Operation{ID: "second-op", CreatedAt: time.Now().Unix()}))
+	// Operation IDs are random hex, so they contain characters such as 0.
+	first, second := "0e7c709c7b6bffde43b029b7b261ed26", "a1b2c3d4e5f60718293a4b5c6d7e8f90"
+	require.NoError(t, journal.Save(contract.Operation{ID: first, CreatedAt: time.Now().Add(-time.Minute).Unix()}))
+	require.NoError(t, journal.Save(contract.Operation{ID: second, CreatedAt: time.Now().Unix()}))
 
 	operations, err := journal.List()
 
 	require.NoError(t, err)
 	require.Len(t, operations, 2)
-	assert.Equal(t, "second-op", operations[0].ID)
+	assert.Equal(t, second, operations[0].ID)
+	operation, err := journal.Get(first)
+	require.NoError(t, err)
+	assert.Equal(t, first, operation.ID)
+	_, err = journal.Get("../outside-op")
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
