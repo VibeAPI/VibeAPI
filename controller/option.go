@@ -91,7 +91,7 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == "upstream_error_setting.rules" {
 			continue
 		}
 		value := common.Interface2String(v)
@@ -130,6 +130,12 @@ func GetOptions(c *gin.Context) {
 		}
 		options = append(options, &model.Option{Key: key, Value: string(encoded)})
 	}
+	// Installs that have not saved upstream error rules yet see their legacy
+	// settings as the rules in force.
+	options = append(options, &model.Option{
+		Key:   "upstream_error_setting.rules",
+		Value: operation_setting.GetUpstreamErrorSetting().EffectiveRulesJSON(),
+	})
 	options = append(options, &model.Option{
 		Key:   "CompletionRatioMeta",
 		Value: buildCompletionRatioMetaValue(optionValues),

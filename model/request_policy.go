@@ -73,7 +73,7 @@ func IsRequestPolicyOption(key string) bool {
 	}
 	switch key {
 	case "CheckSensitiveEnabled", "CheckSensitiveOnPromptEnabled", "SensitiveWords", "AutomaticEnableChannelEnabled", "ChannelDisableThreshold", "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes", "monitor_setting.channel_test_concurrency", "monitor_setting.channel_test_mode", "RetryTimes", "AutomaticRetryStatusCodes", "AutomaticDisableChannelEnabled", "AutomaticDisableStatusCodes", "AutomaticDisableKeywords",
-		"upstream_error_setting.mask_enabled", "upstream_error_setting.mask_status_codes", "upstream_error_setting.mask_keywords",
+		"upstream_error_setting.rules", "upstream_error_setting.mask_enabled", "upstream_error_setting.mask_status_codes", "upstream_error_setting.mask_keywords",
 		"request_rule_setting.rules":
 		return true
 	}
@@ -149,6 +149,9 @@ func BuildRequestPolicy(options map[string]string) (*RequestPolicySnapshot, erro
 	}
 	snapshot.DisableKeywords = strings.Split(raw["AutomaticDisableKeywords"], "\n")
 	if _, err := operation_setting.ParseHTTPStatusCodeRanges(raw["upstream_error_setting.mask_status_codes"]); err != nil {
+		return nil, err
+	}
+	if _, err := operation_setting.ParseUpstreamErrorRules(raw["upstream_error_setting.rules"]); err != nil {
 		return nil, err
 	}
 	if _, err := requestrule.Parse(raw["request_rule_setting.rules"]); err != nil {

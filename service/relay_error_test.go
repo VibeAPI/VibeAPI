@@ -223,8 +223,8 @@ func TestUserFacingRelayErrorHidesUpstreamChannelFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			originalMessage := tc.err.Error()
-			got, replaced := UserFacingRelayError(newUserFacingErrorContext(t, tc.configure), tc.err)
-			assert.Equal(t, tc.wantReplaced, replaced)
+			got, rule := UserFacingRelayError(newUserFacingErrorContext(t, tc.configure), tc.err)
+			assert.Equal(t, tc.wantReplaced, rule != nil)
 			if !tc.wantReplaced {
 				assert.Same(t, tc.err, got)
 				assert.Equal(t, originalMessage, got.Error())
@@ -235,6 +235,53 @@ func TestUserFacingRelayErrorHidesUpstreamChannelFailures(t *testing.T) {
 			assert.Equal(t, siteMessage, openAIError.Message)
 			assert.Equal(t, types.ErrorCodeModelNotFound, openAIError.Code)
 			assert.Equal(t, siteMessage, got.ToClaudeError().Message)
+		})
+	}
+}
+
+func TestUpstreamErrorRulesDecideTheCallersError(t *testing.T) {
+	const siteMessage = "分组 default 下模型 gpt-6.2-astra 无可用渠道（distributor）"
+	const poolRules = `[
+		{"name":"pool empty","enabled":true,"status_codes":"500","keywords":["No Upstream Account Token"],"action":"rewrite","response":{"status":429,"code":"rate_limit_exceeded","message":"Too many requests for {{model}} in {{group}}, retry later"}},
+		{"name":"balance","enabled":true,"status_codes":"401-403","keywords":["insufficient"],"action":"intercept"}
+	]`
+	poolEmpty := func() *types.NewAPIError {
+		return upstreamRelayError(http.StatusInternalServerError, `{"error":{"message":"no upstream account token: add an account in admin or set ANTHROPIC_API_KEY","type":"server_error"}}`)
+	}
+	for _, tc := range []struct {
+		name         string
+		rules        string
+		err          *types.NewAPIError
+		wantPosition int
+		wantStatus   int
+		wantCode     types.ErrorCode
+		wantMessage  string
+	}{
+		{name: "rewrite rule answers an empty pool with 429", rules: poolRules, err: poolEmpty(), wantPosition: 1, wantStatus: http.StatusTooManyRequests, wantCode: types.ErrorCodeRateLimitExceeded, wantMessage: "Too many requests for gpt-6.2-astra in default, retry later"},
+		{name: "intercept rule answers with the site's no-channel error", rules: poolRules, err: upstreamRelayError(http.StatusForbidden, `{"error":{"message":"insufficient balance","type":"openai_error"}}`), wantPosition: 2, wantStatus: http.StatusServiceUnavailable, wantCode: types.ErrorCodeModelNotFound, wantMessage: siteMessage},
+		{name: "a rule with status codes and keywords needs both", rules: poolRules, err: upstreamRelayError(http.StatusInternalServerError, `{"error":{"message":"upstream crashed","type":"server_error"}}`)},
+		{name: "a disabled rule does not match", rules: strings.Replace(poolRules, `"enabled":true,"status_codes":"500"`, `"enabled":false,"status_codes":"500"`, 1), err: poolEmpty()},
+		{name: "a keyword-only rule matches any status", rules: `[{"enabled":true,"keywords":["account token"],"action":"intercept"}]`, err: poolEmpty(), wantPosition: 1, wantStatus: http.StatusServiceUnavailable, wantCode: types.ErrorCodeModelNotFound, wantMessage: siteMessage},
+		{name: "saved rules replace the legacy hiding settings", rules: `[]`, err: upstreamRelayError(http.StatusUnauthorized, "invalid token")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newUserFacingErrorContext(t, func(s *operation_setting.UpstreamErrorSetting) {
+				s.Rules = tc.rules
+			})
+			original := tc.err.Error()
+			got, rule := UserFacingRelayError(c, tc.err)
+			if tc.wantPosition == 0 {
+				assert.Nil(t, rule)
+				assert.Same(t, tc.err, got)
+				assert.Equal(t, original, got.Error())
+				return
+			}
+			require.NotNil(t, rule)
+			assert.Equal(t, tc.wantPosition, rule.Position)
+			assert.Equal(t, tc.wantStatus, got.StatusCode)
+			assert.Equal(t, tc.wantCode, got.ToOpenAIError().Code)
+			assert.Equal(t, tc.wantMessage, got.ToOpenAIError().Message)
+			assert.Equal(t, tc.wantMessage, got.ToClaudeError().Message)
 		})
 	}
 }
@@ -275,7 +322,7 @@ func TestProcessChannelErrorShowsLogOwnerTheUserFacingError(t *testing.T) {
 	require.NoError(t, err)
 	adminInfo, ok := storedOther["admin_info"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, map[string]any{"error_type": "openai_error", "error_code": "insufficient_user_quota", "status_code": float64(http.StatusForbidden)}, adminInfo["upstream_error"])
+	assert.Equal(t, map[string]any{"error_type": "openai_error", "error_code": "insufficient_user_quota", "status_code": float64(http.StatusForbidden), "rule": float64(1), "action": "intercept"}, adminInfo["upstream_error"], "operators see which rule replaced the error")
 
 	logs, total, err := model.GetUserLogs(7, model.LogTypeError, 0, 0, "", "", 0, 10, "", "", "")
 	require.NoError(t, err)
@@ -287,6 +334,41 @@ func TestProcessChannelErrorShowsLogOwnerTheUserFacingError(t *testing.T) {
 	assert.NotContains(t, userOther, "admin_info")
 	assert.Equal(t, float64(http.StatusServiceUnavailable), userOther["status_code"])
 	assert.Equal(t, string(types.ErrorCodeModelNotFound), userOther["error_code"])
+}
+
+func TestUpstreamErrorRuleThatSkipsRetryEndsTheRequestAndKeepsTheChannel(t *testing.T) {
+	previousAutoDisable := common.AutomaticDisableChannelEnabled
+	previousDisableCodes := operation_setting.AutomaticDisableStatusCodesToString()
+	common.AutomaticDisableChannelEnabled = true
+	require.NoError(t, operation_setting.AutomaticDisableStatusCodesFromString("429"))
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previousAutoDisable
+		require.NoError(t, operation_setting.AutomaticDisableStatusCodesFromString(previousDisableCodes))
+	})
+	for _, tc := range []struct {
+		name         string
+		skipRetry    bool
+		wantDecision PolicyDecision
+		wantHealth   string
+	}{
+		{name: "a rule that returns at once stops retries and keeps the channel", skipRetry: true, wantDecision: PolicyDecision{Action: "stop", Reason: "error_rule_no_retry", Source: "error_rule"}, wantHealth: "unchanged"},
+		{name: "a rule that only rewrites leaves retries and disabling to the settings", wantDecision: PolicyDecision{Action: "retry", Reason: "retry_status_matched", Source: "global"}, wantHealth: "channel_disable_requested"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newUserFacingErrorContext(t, func(s *operation_setting.UpstreamErrorSetting) {
+				s.Rules = fmt.Sprintf(`[{"enabled":true,"keywords":["no upstream account token"],"action":"rewrite","response":{"status":429,"code":"rate_limit_exceeded","message":"Too many requests"},"skip_retry":%t}]`, tc.skipRetry)
+			})
+			c.Set("auto_ban", true)
+			apiErr := upstreamRelayError(http.StatusTooManyRequests, `{"error":{"message":"no upstream account token: add an account in admin","type":"rate_limit_error"}}`)
+
+			decision := DecideRelayRetry(c, apiErr, 3)
+			assert.Equal(t, tc.wantDecision, decision)
+			RequestPolicy(c).BeginAttempt(&model.Channel{Id: 951}, "default")
+			RecordPolicyFailure(c, 951, apiErr, decision)
+			events := RequestPolicy(c).Events()
+			assert.Equal(t, tc.wantHealth, events[len(events)-1].Health)
+		})
+	}
 }
 
 func TestRequestPolicyEventsReachLogAdminInfo(t *testing.T) {
