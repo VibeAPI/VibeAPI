@@ -22,7 +22,6 @@ import type { RequestPolicySettings } from './defaults'
 import { RequestChecksSection } from './request-checks-section'
 import { RequestRulesSection } from './request-rules-section'
 import { RoutingPolicySection } from './routing-section'
-import { UpstreamErrorsSection } from './upstream-errors-section'
 
 const POLICY_SECTIONS = [
   {
@@ -55,13 +54,6 @@ const POLICY_SECTIONS = [
     titleKey: 'Channel health',
     build: (settings: RequestPolicySettings) => (
       <ChannelHealthSection defaultValues={settings} />
-    ),
-  },
-  {
-    id: 'upstream-errors',
-    titleKey: 'Upstream errors',
-    build: (settings: RequestPolicySettings) => (
-      <UpstreamErrorsSection defaultValues={settings} />
     ),
   },
 ] as const

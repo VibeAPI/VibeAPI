@@ -840,6 +840,7 @@ export const STATIC_I18N_KEYS = [
   // Request rules JSON parse errors (request-rules/rules.ts)
   'Rules JSON is not valid JSON',
   'Rules JSON must be an array of rules',
+  'Each rule needs an action of intercept or rewrite',
   // Channel user rules validation errors (channels/lib/channel-user-rules.ts)
   'User rules must be a JSON array of rule objects',
   'User rules cannot contain more than 1000 rules',

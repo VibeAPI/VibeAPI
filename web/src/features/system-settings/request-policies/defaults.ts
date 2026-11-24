@@ -41,10 +41,10 @@ export type FilteringSettings = Pick<
   SecuritySettings,
   'CheckSensitiveEnabled' | 'CheckSensitiveOnPromptEnabled' | 'SensitiveWords'
 >
+// A JSON array of upstream error rules. The options API returns the rules in
+// force, which for an install that never saved rules are its legacy settings.
 export type UpstreamErrorSettings = {
-  'upstream_error_setting.mask_enabled': boolean
-  'upstream_error_setting.mask_status_codes': string
-  'upstream_error_setting.mask_keywords': string
+  'upstream_error_setting.rules': string
 }
 // A JSON array of request rules; the backend default holds the preset rules.
 export type RequestRuleSettings = {
@@ -80,8 +80,6 @@ export const defaultRequestPolicySettings: RequestPolicySettings = {
   CheckSensitiveEnabled: false,
   CheckSensitiveOnPromptEnabled: false,
   SensitiveWords: '',
-  'upstream_error_setting.mask_enabled': true,
-  'upstream_error_setting.mask_status_codes': '401-403',
-  'upstream_error_setting.mask_keywords': '',
+  'upstream_error_setting.rules': '',
   'request_rule_setting.rules': '',
 }

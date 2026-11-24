@@ -129,7 +129,7 @@ export function RuleEditorDialog(props: RuleEditorDialogProps) {
     >
       <Form {...form}>
         <form
-          className='grid gap-6'
+          className='grid grid-cols-1 gap-6'
           onSubmit={(event) => {
             event.preventDefault()
             void handleSubmit()
@@ -533,7 +533,7 @@ export function RuleEditorDialog(props: RuleEditorDialogProps) {
               )}
             />
             {endpoints.length > 0 ? (
-              <div className='grid gap-2'>
+              <div className='grid min-w-0 gap-2'>
                 <span className='text-sm font-medium'>
                   {t('Response preview')}
                 </span>
@@ -554,7 +554,7 @@ export function RuleEditorDialog(props: RuleEditorDialogProps) {
                     ) : null}
                   </TabsList>
                   <TabsContent value='claude'>
-                    <pre className='bg-muted/40 overflow-x-auto rounded-lg border p-3 font-mono text-xs'>
+                    <pre className='bg-muted/40 rounded-lg border p-3 font-mono text-xs break-words whitespace-pre-wrap'>
                       {JSON.stringify(
                         {
                           type: 'error',
@@ -569,7 +569,7 @@ export function RuleEditorDialog(props: RuleEditorDialogProps) {
                     </pre>
                   </TabsContent>
                   <TabsContent value='openai'>
-                    <pre className='bg-muted/40 overflow-x-auto rounded-lg border p-3 font-mono text-xs'>
+                    <pre className='bg-muted/40 rounded-lg border p-3 font-mono text-xs break-words whitespace-pre-wrap'>
                       {JSON.stringify(
                         {
                           error: {

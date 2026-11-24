@@ -70,6 +70,10 @@ export function policyLabel(t: TFunction, value: string): string {
       return t('Channel disable requested')
     case 'key_disable_requested':
       return t('Current key disable requested')
+    case 'error_rule_no_retry':
+      return t('Returned at once by an error rule')
+    case 'error_rule':
+      return t('Error rule')
     case 'off':
     case '':
       return t('Do not keep sessions')

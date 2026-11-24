@@ -102,6 +102,32 @@ function savedRules() {
   return JSON.parse(options['request_rule_setting.rules'])
 }
 
+// Upstream error rules as the options API returns them for an install that
+// still uses the legacy hiding settings, plus one named rule.
+const ERROR_RULES = [
+  {
+    name: '',
+    enabled: true,
+    status_codes: '401-403',
+    keywords: [],
+    action: 'intercept',
+  },
+  {
+    name: 'Balance',
+    enabled: true,
+    status_codes: '',
+    keywords: ['insufficient balance', '余额不足'],
+    action: 'intercept',
+  },
+]
+
+function savedErrorRules() {
+  const [, payload] = vi.mocked(api.patch).mock.calls[0]
+  const options = (payload as { options: Record<string, string> }).options
+  expect(Object.keys(options)).toEqual(['upstream_error_setting.rules'])
+  return JSON.parse(options['upstream_error_setting.rules'])
+}
+
 function optionsResponse() {
   return {
     success: true,
@@ -176,6 +202,7 @@ beforeEach(() => {
     CheckSensitiveOnPromptEnabled: true,
     SensitiveWords: 'blocked',
     'request_rule_setting.rules': JSON.stringify(RULE_PRESETS),
+    'upstream_error_setting.rules': JSON.stringify(ERROR_RULES),
     'channel_affinity_setting.rules': JSON.stringify([
       {
         name: 'Existing session rule',
@@ -332,50 +359,177 @@ describe('request policy settings', () => {
     expect(api.put).not.toHaveBeenCalled()
   })
 
-  it('saving unchanged upstream error settings does not write options', async () => {
-    await renderPolicies('/system-settings/request-policies/upstream-errors')
-    const save = await screen.findByRole('button', { name: 'Save Changes' })
+  it('the health page lists the error rules in force and saving them unchanged writes nothing', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    const table = await screen.findByRole('region', {
+      name: 'Error rules table',
+    })
+    expect(within(table).getByText('401-403')).toBeVisible()
+    expect(within(table).getByText('Balance')).toBeVisible()
+    expect(within(table).getAllByText('Intercept')).toHaveLength(2)
+    const save = screen.getByRole('button', { name: 'Save Changes' })
     await userEvent.click(save)
     await waitFor(() => expect(save).toBeEnabled())
     expect(api.patch).not.toHaveBeenCalled()
   })
 
-  it('editing hidden upstream error keywords writes only that option', async () => {
-    await renderPolicies('/system-settings/request-policies/upstream-errors')
+  it('adding a rewrite rule previews its response and saves it after the existing rules', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('HTTP 503')).toBeVisible()
     fireEvent.change(
-      await screen.findByRole('textbox', { name: 'Hidden error keywords' }),
-      { target: { value: 'upstream maintenance\r\n余额不足' } }
+      within(dialog).getByRole('textbox', { name: 'Upstream status codes' }),
+      { target: { value: '500' } }
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: 'Error keywords' }),
+      { target: { value: 'no upstream account token' } }
+    )
+    await userEvent.click(
+      within(dialog).getByRole('radio', { name: /^Rewrite/ })
+    )
+    expect(within(dialog).getByText('HTTP 429')).toBeVisible()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
     await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
-        '/api/option/request_policy',
-        {
-          options: {
-            'upstream_error_setting.mask_keywords':
-              'upstream maintenance\n余额不足',
-          },
-        }
-      )
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     )
+    expect(api.patch).not.toHaveBeenCalled()
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Error rules table' })
+      ).getByText('No retry')
+    ).toBeVisible()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledOnce())
+    expect(savedErrorRules()).toEqual([
+      ...ERROR_RULES,
+      {
+        name: '',
+        enabled: true,
+        status_codes: '500',
+        keywords: ['no upstream account token'],
+        action: 'rewrite',
+        response: {
+          status: 429,
+          code: 'rate_limit_exceeded',
+          message: 'Too many requests, please retry later',
+        },
+        skip_retry: true,
+      },
+    ])
   })
 
-  it('turning upstream error hiding off with the keyboard writes only the switch', async () => {
-    await renderPolicies('/system-settings/request-policies/upstream-errors')
-    const hide = await screen.findByRole('switch', {
-      name: 'Hide upstream account errors',
-    })
-    expect(hide).toBeChecked()
-    hide.focus()
-    await userEvent.keyboard(' ')
-    expect(hide).not.toBeChecked()
-    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
-    await waitFor(() =>
-      expect(api.patch).toHaveBeenCalledExactlyOnceWith(
-        '/api/option/request_policy',
-        { options: { 'upstream_error_setting.mask_enabled': 'false' } }
-      )
+  it('turning off return at once saves a rule that leaves retries to the settings', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
     )
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: 'Error keywords' }),
+      { target: { value: 'upstream maintenance' } }
+    )
+    const returnAtOnce = within(dialog).getByRole('switch', {
+      name: 'Return at once, no retry',
+    })
+    expect(returnAtOnce).toBeChecked()
+    await userEvent.click(returnAtOnce)
+    expect(returnAtOnce).not.toBeChecked()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+    expect(
+      within(
+        screen.getByRole('region', { name: 'Error rules table' })
+      ).queryByText('No retry')
+    ).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledOnce())
+    expect(savedErrorRules()[2]).toEqual({
+      name: '',
+      enabled: true,
+      status_codes: '',
+      keywords: ['upstream maintenance'],
+      action: 'intercept',
+    })
+  })
+
+  it('a rule without status codes or keywords stays in the dialog with an error', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    expect(
+      await within(dialog).findByText('Enter status codes, keywords or both')
+    ).toBeVisible()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('turning an error rule off with the keyboard saves only the rules option', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    const toggle = await screen.findByRole('switch', {
+      name: 'Enable Balance',
+    })
+    toggle.focus()
+    await userEvent.keyboard(' ')
+    expect(toggle).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledOnce())
+    expect(savedErrorRules()).toEqual([
+      ERROR_RULES[0],
+      { ...ERROR_RULES[1], enabled: false },
+    ])
+  })
+
+  it('invalid error rules JSON stays in the JSON view and is not saved', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    await userEvent.click(await screen.findByRole('tab', { name: 'JSON' }))
+    const editor = await screen.findByRole('textbox', { name: 'Rules JSON' })
+    fireEvent.input(editor, { target: { value: '[' } })
+    expect(screen.getByText('Rules JSON is not valid JSON')).toBeVisible()
+    await userEvent.click(screen.getByRole('tab', { name: 'Visual' }))
+    expect(screen.getByRole('tab', { name: 'JSON' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(api.patch).not.toHaveBeenCalled()
+  })
+
+  it('the error rule dialog wraps long response previews instead of widening the dialog', async () => {
+    await renderPolicies('/system-settings/request-policies/health')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.querySelector('form')).toHaveClass('grid-cols-1')
+    const previews = dialog.querySelectorAll('pre')
+    expect(previews.length).toBeGreaterThan(0)
+    for (const preview of previews) {
+      expect(preview).toHaveClass('whitespace-pre-wrap')
+    }
+  })
+
+  it('the request rule dialog wraps long response previews instead of widening the dialog', async () => {
+    await renderPolicies('/system-settings/request-policies/request-rules')
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Add Rule' })
+    )
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Blank Rule' }))
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.querySelector('form')).toHaveClass('grid-cols-1')
+    const previews = dialog.querySelectorAll('pre')
+    expect(previews.length).toBeGreaterThan(0)
+    for (const preview of previews) {
+      expect(preview).toHaveClass('whitespace-pre-wrap')
+    }
   })
 
   it('request rules list the stored rules and saving them unchanged writes nothing', async () => {
@@ -554,17 +708,6 @@ describe('request policy settings', () => {
     expect(JSON.parse((request as { rules: string }).rules)).toEqual(
       RULE_PRESETS
     )
-  })
-
-  it('invalid always-hidden status codes show validation and do not write options', async () => {
-    await renderPolicies('/system-settings/request-policies/upstream-errors')
-    const codes = await screen.findByRole('textbox', {
-      name: 'Always-hidden status codes',
-    })
-    fireEvent.change(codes, { target: { value: '599-500' } })
-    await userEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
-    await waitFor(() => expect(codes).toHaveAttribute('aria-invalid', 'true'))
-    expect(api.patch).not.toHaveBeenCalled()
   })
 
   it('a rejected save keeps the edited retry value and allows another save', async () => {

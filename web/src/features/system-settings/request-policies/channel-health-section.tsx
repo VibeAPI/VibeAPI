@@ -59,7 +59,13 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { safeNumberFieldProps } from '../utils/numeric-field'
-import type { HealthSettings } from './defaults'
+import type { HealthSettings, UpstreamErrorSettings } from './defaults'
+import {
+  compactErrorRulesJson,
+  formatStoredErrorRules,
+  parseErrorRulesJson,
+} from './upstream-error-rules/rules'
+import { ErrorRulesEditor } from './upstream-error-rules/rules-editor'
 import { useSavePolicy } from './use-save-policy'
 
 const numericString = z.string().refine((value) => {
@@ -86,6 +92,12 @@ const createChannelHealthSchema = (
       AutomaticEnableChannelEnabled: z.boolean(),
       AutomaticDisableKeywords: z.string(),
       AutomaticDisableStatusCodes: z.string(),
+      UpstreamErrorRules: z.string().superRefine((value, ctx) => {
+        const parsed = parseErrorRulesJson(value)
+        if (!parsed.ok) {
+          ctx.addIssue({ code: 'custom', message: t(parsed.error) })
+        }
+      }),
       monitor_setting: z.object({
         auto_test_channel_enabled: z.boolean(),
         auto_test_channel_minutes: z.coerce
@@ -123,7 +135,7 @@ type ChannelHealthFormValues = z.output<ChannelHealthSchema>
 type ChannelHealthFormInput = z.input<ChannelHealthSchema>
 
 type ChannelHealthSectionProps = {
-  defaultValues: HealthSettings
+  defaultValues: HealthSettings & UpstreamErrorSettings
 }
 
 function normalizeLineEndings(value: string) {
@@ -136,10 +148,17 @@ type NormalizedChannelHealthValues = {
   AutomaticEnableChannelEnabled: boolean
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
+  'upstream_error_setting.rules': string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_concurrency': number
   'monitor_setting.channel_test_mode': ChannelTestMode
+}
+
+// Rules are saved and compared as compact JSON; text that does not parse is
+// kept so it still counts as a change, and the schema rejects it.
+function normalizeErrorRules(value: string): string {
+  return compactErrorRulesJson(value) ?? value
 }
 
 function normalizeChannelTestMode(value?: string): ChannelTestMode {
@@ -159,6 +178,9 @@ const buildFormDefaults = (
     defaults.AutomaticDisableKeywords ?? ''
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
+  UpstreamErrorRules: formatStoredErrorRules(
+    defaults['upstream_error_setting.rules'] ?? ''
+  ),
   monitor_setting: {
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
@@ -184,6 +206,9 @@ const normalizeDefaults = (
   AutomaticDisableStatusCodes: parseHttpStatusCodeRules(
     defaults.AutomaticDisableStatusCodes ?? ''
   ).normalized,
+  'upstream_error_setting.rules': normalizeErrorRules(
+    defaults['upstream_error_setting.rules'] ?? ''
+  ),
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
@@ -207,6 +232,9 @@ const normalizeFormValues = (
   AutomaticDisableStatusCodes: parseHttpStatusCodeRules(
     values.AutomaticDisableStatusCodes
   ).normalized,
+  'upstream_error_setting.rules': normalizeErrorRules(
+    values.UpstreamErrorRules
+  ),
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
@@ -595,6 +623,43 @@ export function ChannelHealthSection({
                 )}
               />
             </SettingsFormGrid>
+          </div>
+
+          <Separator />
+
+          <div
+            role='group'
+            aria-labelledby='upstream-error-rules-title'
+            className='flex min-w-0 flex-col gap-4'
+          >
+            <div className='flex flex-col gap-1'>
+              <h4
+                id='upstream-error-rules-title'
+                className='text-sm font-medium'
+              >
+                {t('Error rules')}
+              </h4>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  "When an upstream channel returns an error, these rules are checked in order and the first match decides the error the caller sees. Intercept returns this site's no-available-channel error (503); rewrite returns the status code and message you set, such as 429 so callers back off instead of retrying at once."
+                )}
+              </p>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  "A rule set to return at once ends the request with its error: no retry on this or another channel and no auto-disable. For other rules, retries and auto-disable still follow the original upstream error. Administrators still see the original error in usage logs, and errors from this site, such as a caller's own insufficient balance, stay unchanged."
+                )}
+              </p>
+            </div>
+            <FormField
+              control={form.control}
+              name='UpstreamErrorRules'
+              render={({ field }) => (
+                <ErrorRulesEditor
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
           </div>
         </SettingsForm>
       </Form>
